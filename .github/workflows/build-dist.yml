@@ -1,0 +1,82 @@
+name: Build and commit dist
+
+# Runs on every push to main, builds the production bundles, and commits the
+# refreshed dist/ back to main when the build output actually changed.
+#
+# The release ritual for a maintainer is then:
+#   1. push code to main
+#   2. wait for this workflow to complete (or skip the wait if dist/ didn't change)
+#   3. git pull   (to fetch the bot's dist/ commit, if any)
+#   4. git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# The tag will point at a commit that already contains dist/widget.iife.js,
+# which is what jsDelivr will serve.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'demo/**'
+      - 'supabase/**'
+      - '.gitignore'
+      - '.github/**'
+      - 'comment-widget-build-plan.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-dist-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Commit dist if changed
+        env:
+          # GITHUB_TOKEN used by actions/checkout above carries the right scope.
+          GIT_AUTHOR_NAME: 'github-actions[bot]'
+          GIT_AUTHOR_EMAIL: '41898282+github-actions[bot]@users.noreply.github.com'
+          GIT_COMMITTER_NAME: 'github-actions[bot]'
+          GIT_COMMITTER_EMAIL: '41898282+github-actions[bot]@users.noreply.github.com'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Only ship the bundles, not the source maps. Maps are ~1.8 MB each
+          # and useful locally during development but not for stakeholders.
+          # dist/ is in .gitignore so we force-add the specific files we want.
+          git add -f dist/widget.iife.js dist/widget.es.js
+
+          if git diff --cached --quiet; then
+            echo "::notice::No dist/ changes to commit."
+            exit 0
+          fi
+
+          # [skip ci] tag prevents this commit from re-triggering CI.
+          # The default GITHUB_TOKEN also doesn't re-trigger workflows by design,
+          # but the tag makes intent explicit for human readers.
+          git commit -m "build: refresh dist/ [skip ci]"
+          git push origin HEAD:main

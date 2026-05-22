@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comment widget · demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.55;
+        color: #1a1a1a;
+        background: #fafbfc;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 0; }
+      header {
+        background: #fff;
+        border-bottom: 1px solid #e3e4e8;
+        padding: 16px 24px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      header h1 { margin: 0; font-size: 18px; }
+      header p { margin: 4px 0 0; color: #6b6b6b; font-size: 13px; }
+      main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+      section { background: #fff; border: 1px solid #e3e4e8; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+      section h2 { margin-top: 0; }
+      .hero {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 24px;
+        align-items: center;
+      }
+      @media (max-width: 720px) {
+        .hero { grid-template-columns: 1fr; }
+      }
+      .hero-art {
+        background: linear-gradient(135deg, #2f6df6 0%, #8b5cf6 100%);
+        border-radius: 8px;
+        aspect-ratio: 4 / 3;
+      }
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #1a1a1a;
+        color: #fff;
+        border: none;
+        padding: 10px 18px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #f4f5f7;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .card h3 { margin-top: 0; font-size: 15px; }
+      .config-banner {
+        background: #fff7d6;
+        border: 1px solid #f3d873;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 13px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .controls button {
+        background: #fff;
+        border: 1px solid #d6d8de;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .controls button:hover { background: #f4f5f7; }
+      .project-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #3730a3;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 8px;
+      }
+      .lazy-target {
+        min-height: 240px;
+        background: #fef3c7;
+        border: 1px dashed #f59e0b;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #92400e;
+      }
+      footer {
+        text-align: center;
+        color: #6b6b6b;
+        padding: 32px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="page-title">
+        Comment widget demo
+        <span class="project-pill" id="project-pill">project: demo</span>
+      </h1>
+      <p>Use the toolbar at the bottom right to enter comment mode, then click anything to drop a pin.</p>
+    </header>
+
+    <main>
+      <div id="config-banner" class="config-banner" hidden>
+        <strong>Configure Supabase to test realtime.</strong>
+        Copy <code>demo/local.html.example</code> to <code>demo/local.html</code> and fill in your values, or
+        edit the constants at the bottom of this page. Without credentials, the widget will load but inserts will fail.
+      </div>
+
+      <section data-comment-anchor="hero">
+        <div class="hero">
+          <div>
+            <h2 id="hero-title">A live commenting layer for design review.</h2>
+            <p>Stakeholders click any element to leave a pinned comment. Comments sync across viewers in real time.</p>
+            <button class="cta" id="hero-cta" data-comment-anchor="hero-cta">Start review</button>
+          </div>
+          <div class="hero-art" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Failure modes (§7.5)</h2>
+        <p>Use these controls to manually exercise the acceptance criteria from the build plan.</p>
+        <div class="controls">
+          <button id="btn-add-card">Add card</button>
+          <button id="btn-remove-card">Remove last card</button>
+          <button id="btn-swap-text">Swap hero title text</button>
+          <button id="btn-toggle-narrow">Toggle narrow viewport</button>
+          <button id="btn-load-lazy">Load lazy section</button>
+          <button id="btn-clear-identity">Clear local identity</button>
+          <button id="btn-switch-project">Switch project (demo ↔ demo-alt)</button>
+        </div>
+
+        <div class="grid" id="card-grid" style="margin-top: 16px">
+          <div class="card"><h3>First card</h3><p>Anchor a pin on this title to test percentage-based positioning.</p></div>
+          <div class="card"><h3>Second card</h3><p>Try removing cards and watch what happens to their pins.</p></div>
+          <div class="card"><h3>Third card</h3><p>Use the controls above to mutate the DOM and verify pins reflow.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Long content for scroll testing</h2>
+        <p>Scroll the page — pins should stay attached to their elements.</p>
+        <ol>
+          <li>Pin a comment on this list item.</li>
+          <li>Scroll down a few hundred pixels.</li>
+          <li>The pin should follow the item, not stay fixed to a viewport position.</li>
+        </ol>
+        <p style="height: 600px; background: repeating-linear-gradient(45deg, #f4f5f7, #f4f5f7 12px, #e9eaef 12px, #e9eaef 24px); border-radius: 8px;">
+          (Decorative filler block — pin something on it.)
+        </p>
+      </section>
+
+      <section id="lazy-section-holder">
+        <h2>Lazy-loaded section</h2>
+        <p>Click "Load lazy section" above to inject content here. A pin previously anchored to an element inside this section should appear when the section appears.</p>
+      </section>
+    </main>
+
+    <footer>
+      Demo page · open this in two tabs to verify realtime sync.
+    </footer>
+
+    <script type="module">
+      // Local dev-only config. In production this is replaced by data-* attributes
+      // on the <script> tag (see top-level README).
+      //
+      // To test realtime + persistence locally, fill these in with your own
+      // Supabase project credentials. Without them, the widget still mounts but
+      // inserts will fail (you'll see a red error banner in the composer).
+      const PROJECT_ID = window.localStorage.getItem('CW_PROJECT_ID') || 'demo';
+      const SUPABASE_URL = window.localStorage.getItem('CW_SUPABASE_URL') || '';
+      const SUPABASE_ANON_KEY = window.localStorage.getItem('CW_SUPABASE_ANON_KEY') || '';
+
+      document.getElementById('project-pill').textContent = `project: ${PROJECT_ID}`;
+
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        document.getElementById('config-banner').hidden = false;
+      }
+
+      const { mount } = await import('/src/index.ts');
+      mount({
+        projectId: PROJECT_ID,
+        supabaseUrl: SUPABASE_URL || 'https://placeholder.supabase.co',
+        supabaseAnonKey: SUPABASE_ANON_KEY || 'placeholder',
+      });
+
+      // Failure-mode test controls
+      const grid = document.getElementById('card-grid');
+      let cardCounter = 3;
+      document.getElementById('btn-add-card').addEventListener('click', () => {
+        cardCounter += 1;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<h3>Card ${cardCounter}</h3><p>Newly added — pre-existing pins should not jump.</p>`;
+        grid.appendChild(card);
+      });
+      document.getElementById('btn-remove-card').addEventListener('click', () => {
+        const last = grid.lastElementChild;
+        if (last) last.remove();
+      });
+      document.getElementById('btn-swap-text').addEventListener('click', () => {
+        const title = document.getElementById('hero-title');
+        title.textContent =
+          title.textContent === 'A live commenting layer for design review.'
+            ? 'A different headline that is significantly longer to force a layout change.'
+            : 'A live commenting layer for design review.';
+      });
+      document.getElementById('btn-toggle-narrow').addEventListener('click', () => {
+        const main = document.querySelector('main');
+        if (main.style.maxWidth === '480px') {
+          main.style.maxWidth = '';
+        } else {
+          main.style.maxWidth = '480px';
+        }
+      });
+      let lazyLoaded = false;
+      document.getElementById('btn-load-lazy').addEventListener('click', () => {
+        if (lazyLoaded) return;
+        const holder = document.getElementById('lazy-section-holder');
+        const lazy = document.createElement('div');
+        lazy.className = 'lazy-target';
+        lazy.id = 'lazy-loaded-content';
+        lazy.textContent = 'Lazy-loaded! Pin me before reload to test re-resolution.';
+        holder.appendChild(lazy);
+        lazyLoaded = true;
+      });
+      document.getElementById('btn-clear-identity').addEventListener('click', () => {
+        window.localStorage.removeItem('__comment_widget_identity');
+        alert('Identity cleared. Reload to be re-prompted.');
+      });
+      document.getElementById('btn-switch-project').addEventListener('click', () => {
+        const next = PROJECT_ID === 'demo' ? 'demo-alt' : 'demo';
+        window.localStorage.setItem('CW_PROJECT_ID', next);
+        location.reload();
+      });
+    </script>
+  </body>
+</html>

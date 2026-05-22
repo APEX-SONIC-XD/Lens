@@ -1,0 +1,60 @@
+# Demo page
+
+This is the local test surface for the comment widget. It serves the source via Vite's dev server, so edits in `src/` hot-reload here.
+
+## Running
+
+```bash
+npm install
+npm run dev
+```
+
+That opens `http://localhost:5173/demo/`.
+
+## Pointing it at a real Supabase project
+
+The demo reads Supabase credentials from `localStorage` (so you don't accidentally commit them). In the browser DevTools console:
+
+```js
+localStorage.setItem('CW_SUPABASE_URL', 'https://your-project.supabase.co');
+localStorage.setItem('CW_SUPABASE_ANON_KEY', 'eyJhbG...');
+location.reload();
+```
+
+The yellow config banner at the top disappears once both are set.
+
+## §7.5 acceptance-criteria walkthrough
+
+The page exposes buttons that let you exercise each of the seven failure modes from §7.5 of the build plan. Before declaring Phase 1 done, walk through all of these:
+
+1. **Page loads with comments → pins at correct positions.** Drop a few pins, reload, confirm they reappear in the same places.
+2. **Anchored element removed → pin degrades.** Pin on a card, click "Remove last card" if you pinned the last one, then reload. The pin should render with a dashed amber outline (approximate state) by attaching to the parent grid.
+3. **Resize between mobile and desktop → pins move with elements.** Click "Toggle narrow viewport" or resize the window. Pins should track their elements.
+4. **Lazy-loaded section → pin appears when section appears.** Pin on the "Load lazy section" trigger first to leave a known pin in place. Then reload. Pin the lazy-loaded content (after pressing "Load lazy section"), reload — the pin should appear once you press "Load lazy section" again because of the MutationObserver.
+5. **Page scrolls → pins stay attached.** Drop pins at the top and bottom of the page. Scroll. Pins should follow.
+6. **Inner content swapped → pin stays roughly correct.** Pin near the start of the hero title text, then click "Swap hero title text". Percentage anchoring should keep the pin in approximately the right place.
+7. **Same selector on different pages.** Not directly exercisable from a single page, but verify by serving two distinct pages with overlapping selectors and confirming `page_url` filters them.
+
+## Two-tab realtime test
+
+Open the demo in two browser tabs at the same URL. Create a comment in tab A. Tab B should show the new pin within ~2 seconds with no manual refresh.
+
+## Phase 2 acceptance criteria
+
+Once you have a working Supabase backend wired up:
+
+1. **Threaded replies.** Drop a pin. Click it. Use the reply textarea at the bottom of the popover to add 4 more replies. All 5 should render in chronological order, cleanly, without overflowing.
+2. **Resolve / reopen.** Click **Resolve** in the popover header. The pin should turn gray and (if "Showing open" is active in the toolbar) disappear from the page. Click the toolbar filter funnel to switch to "Showing all" — the resolved pin reappears in muted style. Open it and click **Reopen**; the pin returns to blue.
+3. **Toolbar filter.** With a mix of open and resolved pins, the toolbar funnel button toggles between "N open" (open only) and "N of M" (all). Open pins always remain visible; resolved pins only show when the filter is off.
+4. **Multi-project isolation.** Click **Switch project (demo ↔ demo-alt)** in the controls. The page reloads with a different `project_id` and the project pill at the top updates. Comments from one project should not appear in the other. To restore: click the button again.
+
+### Visible errors
+
+The widget now surfaces insert / load failures inline:
+
+- Failed to create the initial comment → red banner in the composer with a hint about what went wrong (RLS, invalid key, network, etc.).
+- Failed to post a reply → red banner inside the popover footer.
+- Failed to change status → red banner under the popover header.
+- Failed initial load → red toast in the top-left of the viewport.
+
+Console still logs the full underlying error for debugging.

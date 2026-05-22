@@ -1,0 +1,48 @@
+name: Release
+
+# Creates a GitHub Release object when a vX.Y.Z tag is pushed. Surfaces
+# version history in the GitHub UI and auto-generates release notes from
+# commits since the previous tag.
+#
+# This workflow does NOT build or commit dist/ — that's build-dist.yml's job.
+# By the time you push a tag, dist/ should already be at the tag's commit
+# (because build-dist.yml ran on the preceding push to main).
+#
+# To sanity-check that, the workflow verifies dist/widget.iife.js is present
+# in the tagged commit and fails loudly if it isn't.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify dist is present in the tagged commit
+        run: |
+          if [ ! -f dist/widget.iife.js ]; then
+            echo "::error::dist/widget.iife.js missing at $GITHUB_REF_NAME."
+            echo "::error::Did you forget to 'git pull' after the build-dist workflow ran on main?"
+            echo "::error::Delete this tag, pull, and re-tag from the latest main commit."
+            exit 1
+          fi
+          ls -la dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/widget.iife.js \
+            dist/widget.es.js

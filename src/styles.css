@@ -1,0 +1,481 @@
+/* Comment widget styles
+ *
+ * Every rule is scoped to `.cw-*` classes inside `#__comment-widget-root` to
+ * keep the widget visually isolated from host page styles. Avoid bare element
+ * selectors (`button { ... }`) — those would leak.
+ *
+ * Design language: deliberately neutral. The widget is a tool layered on top
+ * of designs; it should never compete visually with the work being reviewed.
+ */
+
+#__comment-widget-root {
+  --cw-accent: #2f6df6;
+  --cw-accent-hover: #2456c2;
+  --cw-text: #1a1a1a;
+  --cw-text-muted: #6b6b6b;
+  --cw-bg: #ffffff;
+  --cw-bg-subtle: #f4f5f7;
+  --cw-border: #e3e4e8;
+  --cw-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), 0 2px 4px rgba(15, 23, 42, 0.06);
+  --cw-radius: 8px;
+  --cw-pin-size: 24px;
+  --cw-z: 2147483000;
+
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--cw-z);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--cw-text);
+}
+
+#__comment-widget-root *,
+#__comment-widget-root *::before,
+#__comment-widget-root *::after {
+  box-sizing: border-box;
+}
+
+/* The full-viewport layer that hosts pins and popovers. Children opt in to
+ * pointer events. */
+.cw-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Comment-mode tint over the page — communicates that clicks land in the widget. */
+.cw-mode-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(47, 109, 246, 0.04);
+  border: 2px dashed rgba(47, 109, 246, 0.35);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Pins */
+.cw-pin {
+  position: absolute;
+  width: var(--cw-pin-size);
+  height: var(--cw-pin-size);
+  margin-left: calc(var(--cw-pin-size) / -2);
+  margin-top: calc(var(--cw-pin-size) * -1);
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cw-accent);
+  color: #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+  border: 2px solid #fff;
+  transition: transform 120ms ease, background 120ms ease;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cw-pin > .cw-pin-label {
+  transform: rotate(45deg);
+}
+
+.cw-pin:hover {
+  background: var(--cw-accent-hover);
+  transform: rotate(-45deg) scale(1.06);
+}
+
+.cw-pin.cw-pin--approximate {
+  border-style: dashed;
+  border-color: #f5b400;
+  background: #f5b400;
+}
+
+.cw-pin.cw-pin--active {
+  background: var(--cw-accent-hover);
+  transform: rotate(-45deg) scale(1.12);
+}
+
+.cw-pin.cw-pin--resolved {
+  background: #94a3b8;
+  border-color: #f1f5f9;
+  opacity: 0.65;
+}
+
+.cw-pin.cw-pin--resolved.cw-pin--active {
+  background: #64748b;
+  opacity: 1;
+}
+
+/* Thread popover */
+.cw-popover {
+  position: absolute;
+  pointer-events: auto;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius);
+  box-shadow: var(--cw-shadow);
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: 60vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cw-popover-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--cw-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--cw-text-muted);
+}
+
+.cw-popover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cw-popover-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cw-popover.cw-popover--resolved .cw-popover-header {
+  background: var(--cw-bg-subtle);
+}
+
+.cw-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cw-popover-body {
+  overflow-y: auto;
+  padding: 6px 12px 12px;
+}
+
+.cw-comment {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-comment:last-child {
+  border-bottom: none;
+}
+
+.cw-comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--cw-text-muted);
+  margin-bottom: 4px;
+}
+
+.cw-comment-meta > strong {
+  color: var(--cw-text);
+  font-weight: 600;
+}
+
+.cw-comment-body {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.cw-popover-empty {
+  padding: 16px 4px;
+  text-align: center;
+  color: var(--cw-text-muted);
+  font-size: 13px;
+}
+
+.cw-popover-footer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--cw-border);
+  background: var(--cw-bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cw-popover.cw-popover--resolved .cw-popover-footer {
+  background: #f8fafc;
+}
+
+/* Composer (initial comment, anchored at click point) */
+.cw-composer {
+  position: absolute;
+  pointer-events: auto;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius);
+  box-shadow: var(--cw-shadow);
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cw-composer-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--cw-border);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--cw-bg);
+  outline: none;
+}
+
+.cw-composer-textarea:focus {
+  border-color: var(--cw-accent);
+  box-shadow: 0 0 0 3px rgba(47, 109, 246, 0.15);
+}
+
+.cw-composer-textarea--compact {
+  min-height: 56px;
+}
+
+.cw-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Inline error feedback inside the composer / popover footer. Toast variant
+ * shown at top-left of the overlay for top-level load failures. */
+.cw-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.cw-error-banner--inline {
+  margin-bottom: 2px;
+}
+
+.cw-toast {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  pointer-events: auto;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius);
+  box-shadow: var(--cw-shadow);
+  padding: 10px 14px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.cw-toast--error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.cw-toast--error strong {
+  color: #7f1d1d;
+}
+
+/* Buttons */
+.cw-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--cw-border);
+  background: var(--cw-bg);
+  color: var(--cw-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cw-btn:hover {
+  background: var(--cw-bg-subtle);
+}
+
+.cw-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cw-btn--primary {
+  background: var(--cw-accent);
+  border-color: var(--cw-accent);
+  color: #fff;
+}
+
+.cw-btn--primary:hover {
+  background: var(--cw-accent-hover);
+  border-color: var(--cw-accent-hover);
+}
+
+.cw-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.cw-btn--icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.cw-btn--small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.cw-filter-active {
+  color: var(--cw-accent);
+  background: rgba(47, 109, 246, 0.08);
+  border-color: rgba(47, 109, 246, 0.3);
+}
+
+/* Toolbar */
+.cw-toolbar {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: 999px;
+  box-shadow: var(--cw-shadow);
+}
+
+.cw-toolbar-label {
+  font-size: 13px;
+  color: var(--cw-text-muted);
+}
+
+.cw-toolbar-toggle {
+  border-radius: 999px;
+}
+
+.cw-toolbar-toggle--on {
+  background: var(--cw-accent);
+  color: #fff;
+  border-color: var(--cw-accent);
+}
+
+.cw-toolbar-toggle--on:hover {
+  background: var(--cw-accent-hover);
+  border-color: var(--cw-accent-hover);
+}
+
+/* Identity prompt (modal) */
+.cw-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.cw-modal {
+  background: var(--cw-bg);
+  border-radius: var(--cw-radius);
+  box-shadow: var(--cw-shadow);
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cw-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.cw-modal-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--cw-text-muted);
+}
+
+.cw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cw-field-label {
+  font-size: 12px;
+  color: var(--cw-text-muted);
+}
+
+.cw-input {
+  padding: 8px 10px;
+  border: 1px solid var(--cw-border);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--cw-bg);
+  outline: none;
+}
+
+.cw-input:focus {
+  border-color: var(--cw-accent);
+  box-shadow: 0 0 0 3px rgba(47, 109, 246, 0.15);
+}
+
+/* Cursor change when comment mode is on. Applied to body by JS. */
+body.cw-mode-on,
+body.cw-mode-on * {
+  cursor: crosshair !important;
+}
+
+/* But not on widget UI itself. */
+body.cw-mode-on #__comment-widget-root,
+body.cw-mode-on #__comment-widget-root * {
+  cursor: auto !important;
+}
+
+body.cw-mode-on #__comment-widget-root .cw-btn,
+body.cw-mode-on #__comment-widget-root .cw-pin {
+  cursor: pointer !important;
+}

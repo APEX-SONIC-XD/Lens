@@ -1,0 +1,28 @@
+{
+  "name": "comment-widget",
+  "version": "0.1.0",
+  "description": "Figma-style pinned, threaded comment overlay for live web designs.",
+  "type": "module",
+  "main": "./dist/widget.es.js",
+  "module": "./dist/widget.es.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vite-plugin-css-injected-by-js": "^3.5.2",
+    "vue-tsc": "^2.1.0"
+  }
+}
