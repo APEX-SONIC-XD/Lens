@@ -13,7 +13,19 @@ name: Release
 
 on:
   push:
-    tags: ['v*.*.*']
+    # Match any tag that starts with "v" (v0.1.0, v1.2.3, v0.2.0-rc1, etc.).
+    # Broader than v*.*.* so a malformed-but-intentional tag like v0.1 still
+    # triggers the workflow rather than failing silently.
+    tags: ['v*']
+  workflow_dispatch:
+    # Manual trigger: lets you re-run the release flow against an existing tag
+    # without having to delete and re-push it. Requires the tag to already
+    # exist on the remote.
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0). Must already exist on origin.'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -21,16 +33,22 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Resolve the tag name from either trigger source.
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Check out tag
         uses: actions/checkout@v4
         with:
+          # For push triggers GITHUB_REF already points at the tag.
+          # For workflow_dispatch we have to check out the named tag explicitly.
+          ref: ${{ env.TAG }}
           fetch-depth: 0
 
       - name: Verify dist is present in the tagged commit
         run: |
           if [ ! -f dist/widget.iife.js ]; then
-            echo "::error::dist/widget.iife.js missing at $GITHUB_REF_NAME."
+            echo "::error::dist/widget.iife.js missing at $TAG."
             echo "::error::Did you forget to 'git pull' after the build-dist workflow ran on main?"
             echo "::error::Delete this tag, pull, and re-tag from the latest main commit."
             exit 1
@@ -41,8 +59,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            dist/widget.iife.js \
-            dist/widget.es.js
+          # If a release already exists for this tag (e.g. workflow_dispatch
+          # re-run), update it in place instead of failing.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — replacing assets."
+            gh release upload "$TAG" --clobber dist/widget.iife.js dist/widget.es.js
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              dist/widget.iife.js \
+              dist/widget.es.js
+          fi
