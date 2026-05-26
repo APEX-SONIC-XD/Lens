@@ -85,6 +85,11 @@ Don't re-pay these:
 5. **Permissive RLS policies** (`using (true)`) ship in `supabase/schema.sql`. This is intentional for MVP behind stakeholder-only URLs, but **must be tightened before any non-preview deployment**. Hardening checklist is in `supabase/README.md`.
 6. **`document.currentScript` is null in ES modules.** The widget's auto-mount uses classic-script context; module consumers must call `window.CommentWidget.mount(config)` explicitly.
 7. **Release ritual sequencing:** push to main → wait for `build-dist` workflow → `git pull` → tag → push tag. Skipping the pull means tagging a commit that pre-dates the bot's `dist/` commit, and jsDelivr will 404. The `release.yml` workflow verifies and fails loudly if so.
+8. **Shell is Windows PowerShell, not bash.** Default shell on this machine is PowerShell 5.1, which means:
+   - `&&` between commands fails with `'&&' is not a valid statement separator`. Use `;` for sequential-with-continue, or split into separate shell calls.
+   - Bash heredoc (`<<'EOF'`) fails with `'<' operator is reserved for future use`. For multi-line `git commit` messages, use multiple `-m` flags (each becomes a paragraph) or `git commit -F path/to/msg.txt`.
+   - Unix file ops (`rm -rf`, `ls -la`, `cp`) work loosely via PS aliases but options like `-rf` break. Use `Remove-Item -Recurse -Force`, `Get-ChildItem`, `Copy-Item`.
+   - When in doubt, write each command as its own `Shell` call rather than chaining.
 
 ## Release flow
 
