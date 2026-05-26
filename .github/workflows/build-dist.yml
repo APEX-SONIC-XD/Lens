@@ -16,11 +16,13 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - '**.md'
+      - '**/*.md'
+      - '**/*.mdc'
       - 'demo/**'
       - 'supabase/**'
       - '.gitignore'
       - '.github/**'
+      - '.cursor/**'
       - 'comment-widget-build-plan.md'
   workflow_dispatch:
 

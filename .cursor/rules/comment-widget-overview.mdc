@@ -1,0 +1,113 @@
+---
+description: Living overview of the Comment Widget repo — status, architecture, conventions, gotchas, and release flow. Update on every feature ship or material change.
+alwaysApply: true
+---
+
+# Comment widget — project rule
+
+A Figma-style commenting overlay for live web designs. Drop one `<script>` tag onto any preview URL; stakeholders click elements to leave pinned, threaded comments; comments sync in real time. Source of truth for the spec: [`comment-widget-build-plan.md`](../../comment-widget-build-plan.md).
+
+## How to keep this rule fresh
+
+This rule is the **canonical project status document**. Whenever you (the agent or a human) ship something material, update the relevant section here before declaring the task done. Specifically:
+
+- **Phase landed → flip status table** + add bullets under "What's done" + remove from "Roadmap."
+- **New gotcha discovered → add to "Gotchas paid for in time"** so the next agent doesn't re-pay.
+- **Convention change → update "Conventions"** and propagate to existing code if needed.
+- **Release ritual change → update "Release flow."**
+
+Keep this file under ~200 lines. If a section is getting long, factor it into its own `.mdc` rule and link.
+
+## Status
+
+| Phase | State | Last touched |
+|---|---|---|
+| 1 — Click → comment → pin, realtime, reload persistence | **Complete** | v0.1.0 |
+| 2 — Threaded replies, resolve/reopen, toolbar filter, multi-project isolation | **Complete** | v0.1.0 |
+| 3 — Slack webhook on new threads, archive view, magic-link auth, RLS hardening | Not started | — |
+
+Acceptance criteria for shipped phases are in §10 of the build plan and the §7.5 walkthrough in `demo/README.md`.
+
+## Architecture map
+
+```
+src/
+  index.ts                  entrypoint — reads data-* from script tag, mounts at document.body
+  types.ts                  Thread, Comment, AnchorData, ResolvedAnchor, Identity, WidgetConfig
+  styles.css                ALL styles scoped under #__comment-widget-root with cw- prefix
+  components/
+    CommentOverlay.vue      root component, owns: comment-mode, draft, active thread, deferred-identity actions, error state
+    CommentPin.vue          single pin marker (24px tilted droplet)
+    CommentThread.vue       popover w/ replies, resolve/reopen button, error banners
+    IdentityPrompt.vue      first-write name+email modal
+    Toolbar.vue             bottom-right floating button: count + filter funnel + comment toggle
+  composables/
+    useSupabase.ts          createSupabaseClient, subscribeToProject (postgres_changes on threads + comments)
+    useIdentity.ts          localStorage-backed identity (key: __comment_widget_identity)
+    useAnchoring.ts         Vue glue over AnchorScheduler — emits reactive position map
+    useThreads.ts           CRUD + realtime merge, throws WidgetError on failure with translated hints
+  lib/
+    selectorPath.ts         computeSelectorPath (id > [data-comment-anchor] > tag:nth-of-type), resolveSelectorPath w/ progressive shortening fallback
+    anchoring.ts            AnchorScheduler (shared MutationObserver + scroll/resize), AnchorWatcher (per-pin ResizeObserver)
+
+supabase/
+  schema.sql                threads + comments + indexes + RLS + realtime publication; idempotent
+  README.md                 setup + security hardening checklist
+
+demo/
+  index.html                local test page w/ §7.5 failure-mode controls and project-switcher
+  README.md                 acceptance walkthrough
+
+.github/workflows/
+  build-dist.yml            on push to main → npm run build → commits dist/widget.iife.js + widget.es.js back to main
+  release.yml               on push of v* tag → verifies dist/ present → creates GitHub Release w/ assets
+```
+
+## Conventions
+
+- **Vue 3 Composition API only.** No Options API anywhere — the `__VUE_OPTIONS_API__: false` flag in `vite.config.ts` tree-shakes it out.
+- **TypeScript strict.** `noUnusedLocals` and `noUnusedParameters` are on; the build will fail on dead identifiers.
+- **All styles scoped** under `#__comment-widget-root` with `cw-` prefixes. **Never** use bare element selectors (`button { }`) — they'd leak into the host page.
+- **Sentence case in UI strings.** Per build plan §13. Never Title Case.
+- **No narrative code comments** ("// increment the counter"). Comments only for non-obvious intent, trade-offs, or constraints the code itself can't convey.
+- **Errors throw, callers translate.** `useThreads` throws `WidgetError` with a translated `hint`; UI components show `hint` inline. Don't ever swallow Supabase errors silently — that's what cost us a session earlier.
+- **Optimistic updates with rollback.** `updateThreadStatus` flips local state first, awaits server, rolls back on error. Apply the same pattern to any new mutation.
+- **Anchoring uses percentages, not pixels.** A click at 50% × 50% of a button stays at 50% × 50% whether the button is 200 px wide or 600 px wide.
+
+## Gotchas paid for in time
+
+Don't re-pay these:
+
+1. **Vite library mode does NOT replace `process.env.NODE_ENV`** by default. The IIFE bundle dies with `ReferenceError: process is not defined` the moment you load it in vanilla HTML. Fix is the `define` block in `vite.config.ts` — keep it there.
+2. **CSS must be injected at runtime**, not emitted as a separate file. We use `vite-plugin-css-injected-by-js` v3.5.x (v5+ requires Vite >8). Without this, consuming sites would need to load `widget.css` separately, breaking the "one script tag" embed pattern.
+3. **`@supabase/supabase-js` is not tree-shakable past `createClient`** — it bundles auth + storage + functions + postgrest + realtime as one unit. That's ~50 KB of our ~88 KB gzipped bundle. The path to <80 KB if it ever matters: swap for direct `@supabase/postgrest-js` + `@supabase/realtime-js`.
+4. **Realtime subscription filters can't OR across columns.** `comments` are subscribed without a server-side filter; the client filters by known `thread_id` membership in `useThreads.handleCommentEvent`.
+5. **Permissive RLS policies** (`using (true)`) ship in `supabase/schema.sql`. This is intentional for MVP behind stakeholder-only URLs, but **must be tightened before any non-preview deployment**. Hardening checklist is in `supabase/README.md`.
+6. **`document.currentScript` is null in ES modules.** The widget's auto-mount uses classic-script context; module consumers must call `window.CommentWidget.mount(config)` explicitly.
+7. **Release ritual sequencing:** push to main → wait for `build-dist` workflow → `git pull` → tag → push tag. Skipping the pull means tagging a commit that pre-dates the bot's `dist/` commit, and jsDelivr will 404. The `release.yml` workflow verifies and fails loudly if so.
+
+## Release flow
+
+1. Code changes → push to `main`.
+2. `build-dist` workflow runs, commits `build: refresh dist/ [skip ci]` back to main.
+3. `git pull`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. `release` workflow runs, creates GitHub Release with assets.
+5. Consuming sites bump the version in their `<script src="cdn.jsdelivr.net/gh/USER/comment-widget@vX.Y.Z/dist/widget.iife.js">` tag.
+
+**Always pin to exact tags on consumers**, never `@latest` — jsDelivr caches per-tag and `@latest` will silently break stakeholders.
+
+## Roadmap (Phase 3 candidates, prioritized)
+
+- **Slack webhook on new threads** — per-project webhook URL configured in Supabase, edge function bridges from `postgres_changes`.
+- **Magic-link auth replacing localStorage identity** — drops the permissive RLS policies, restricts updates to row creator. The bigger lift.
+- **Archive view** — list of resolved threads from past N days; soft-delete vs hard-delete decision still open.
+- **Story-navigation auto-reload for Storybook embeds** — currently the widget mounts once per iframe and doesn't follow story changes; needs `popstate` + history monkey-patch to re-scope by URL.
+- **Bundle slim to <80 KB gzipped** — modular Supabase imports (see gotcha #3).
+- **Visible "approximate anchor" tooltip** — currently the dashed amber border is the only signal; a hover tooltip would help.
+
+## When in doubt
+
+- **Spec questions:** `comment-widget-build-plan.md` is the source of truth. Sections marked **VERIFY** drift over time — re-check against current docs before implementing.
+- **Backend / RLS:** `supabase/README.md`.
+- **Acceptance walkthroughs:** `demo/README.md`.
+- **Embed patterns (jsDelivr / local / Storybook):** root `README.md`.
