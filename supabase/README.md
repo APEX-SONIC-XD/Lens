@@ -196,9 +196,24 @@ If realtime isn't propagating:
 
 ## Troubleshooting sign-in
 
-- **Code never arrives.** Check the spam folder and (in a corporate environment) the email gateway's quarantine. If still missing, the sender domain `noreply@mail.app.supabase.io` may be filtered at the org level. The fix is either a one-time IT allow-list of that sender, or configuring a custom SMTP sender in Supabase from a domain your gateway already trusts (e.g. via SES, Postmark, Resend).
+- **Code never arrives.** Check the spam folder and (in a corporate environment) the email gateway's quarantine. If still missing, the sender domain `noreply@mail.app.supabase.io` may be filtered at the org level. The fix is either a one-time IT allow-list of that sender, or configuring a custom SMTP sender in Supabase from a domain your gateway already trusts (see **Lifting the OTP rate limit** below).
 - **Code arrives but "invalid or expired" on verify.** Codes are single-use and time-limited (one hour by default). Hit **Resend code** in the modal to get a fresh one — there's a 30-second cooldown to avoid Supabase rate-limiting.
 - **Email template still contains a link.** Supabase will happily render both `{{ .Token }}` and `{{ .ConfirmationURL }}` if both are present; URL-rewriting gateways will still mangle the link half. The OTP code path still works (the user just types the code) but to make this bulletproof, edit the template and remove the link entirely.
+- **`429 Too Many Requests` on sign-in, even from a fresh domain.** Supabase's auth rate limits are **per Supabase project, not per consuming domain or per email address**. Because every site that embeds this widget (BMW T3, EchoPark, the demo, any GitHub Pages preview) shares one Supabase project, they all share one rate-limit pool. The default built-in-mailer cap is ~2 emails per hour across the entire project — not per email and not per origin. There's no way to scope it down to a single domain. Fix in **Lifting the OTP rate limit** below.
+
+### Lifting the OTP rate limit
+
+The hard cap comes from Supabase's built-in email service (anti-abuse). Configuring **any** custom SMTP provider in **Project Settings → Authentication → SMTP Settings** removes it — Supabase then routes auth emails through your provider and is limited only by what the provider allows. The easiest path is to reuse your Brevo account from the **Mention notifications** section above, since you already have it set up:
+
+1. In Brevo, **SMTP & API → SMTP** tab — note the SMTP host (`smtp-relay.brevo.com`), port (`587`), login (your Brevo account email), and **SMTP key**. The SMTP key is a separate credential from the v3 API key used for the mention trigger; generate one from this tab if you haven't already.
+2. In Supabase, **Project Settings → Authentication → SMTP Settings** → toggle **Enable Custom SMTP**, fill in the four values from step 1 plus:
+   - **Sender email**: the same Gmail/Outlook address you verified in Brevo for the mention notifications
+   - **Sender name**: e.g. `Comment widget`
+3. Save. Then **Authentication → Rate Limits** — the per-hour cap on `Token verifications` and `Sign in / Sign ups` will jump from the default ~2 to whatever you set (raise `Sign in / Sign ups` to e.g. 30/hour for dev work).
+
+Same caveat as the mention trigger: verify a personal Gmail/Outlook as the sender, not a corporate-domain address. DMARC alignment will quarantine outbound from a company domain via Brevo.
+
+If Brevo's free tier (300/day) isn't enough or you eventually want a "real" sender on a verified domain, the same SMTP fields take credentials from SES, Postmark, Resend, etc. — Supabase doesn't care which provider as long as it speaks SMTP.
 
 ## Dev auth bypass
 
