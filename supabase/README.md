@@ -47,7 +47,7 @@ When a signed-in user posts a comment that `@-mentions` someone, the `comment_me
 | Path | Setting key(s) in `widget_settings` | Sender shown to recipient | When to use |
 |---|---|---|---|
 | **A. Brevo direct** | `brevo_api_key`, `brevo_sender_email`, `brevo_sender_name` | Whatever email you verified with Brevo (typically a personal Gmail/Outlook) | Default — no IT approval needed, totally outside corporate single-sign-on. |
-| **B. Generic webhook bridge** | `mention_webhook_url` | Whatever the bridge sends as (e.g. your work account via Make.com → Outlook) | Once IT clears Make.com or you upgrade Power Automate to Premium. Wins precedence if both are set. |
+| **B. Generic webhook bridge** | `mention_webhook_url` | Whatever the bridge sends as (e.g. your work account via Make.com → Outlook) | Once IT clears Make.com or another HTTP-webhook automation service. Wins precedence if both are set. |
 
 If neither is set the trigger silently no-ops — safe to ship without configuring anything.
 
@@ -111,9 +111,9 @@ If you see no email and no log entry on Brevo, check Supabase logs for a `notify
 
 ### Path B: Webhook bridge (Make.com → Outlook, when IT eventually clears it)
 
-If your IT admin approves Make.com (or you upgrade Power Automate to Premium), the same trigger can route through a bridge service that sends email from your **work account via OAuth** — closer to a "real" notification. The Postgres trigger is shape-agnostic; you only need to:
+If your IT admin approves Make.com (or another HTTP-webhook automation service), the same trigger can route through a bridge that sends email from your **work account via OAuth** — closer to a "real" notification. The Postgres trigger is shape-agnostic; you only need to:
 
-1. Build the bridge scenario (Make.com, Power Automate Premium, Zapier, n8n, etc.) with an HTTP/webhook trigger and an email-send action.
+1. Build the bridge scenario (Make.com, n8n, or any service that accepts an HTTP webhook and can call an email-send action) with the JSON payload below.
 2. Set the webhook URL in `widget_settings`:
    ```sql
    insert into public.widget_settings (key, value) values
@@ -157,11 +157,9 @@ Payload shape Make.com will see:
 
 1000 operations/month ÷ 2 per mention (webhook + email) ≈ **500 mentions/month** free. Beyond that, Core is $10.59/mo for 10,000 ops.
 
-### Other providers
+### Swapping in another email provider
 
-- **Postmark direct** — 100 emails/month free, single verified sender. Cleaner deliverability than Brevo at low volume, but tighter quota. Trigger would need to be edited to POST to `https://api.postmarkapp.com/email` with `X-Postmark-Server-Token` and Postmark's body shape (`From`, `To`, `Subject`, `HtmlBody`, `TextBody`).
-- **Resend with a verified domain** — cleanest "professional" sender (`review@yourdomain.xyz`) for ~$1-2/year, but requires DNS records. Same trigger-edit approach as Postmark, with `Authorization: Bearer` and Resend's body shape (`from`, `to`, `subject`, `html`, `text`).
-- **Zapier free** — 100 tasks/month, single-step zaps only. Works as the webhook bridge but very tight on quota.
+If you outgrow Brevo's 300/day, want a verified domain sender, or are moving to a service IT controls directly, edit `notify_comment_mention()` in `schema.sql` to POST against the new provider's API — the `pg_net.http_post` call near the bottom of the function is the only thing that has to change (URL + headers + JSON body shape). The skeleton, `widget_settings`-driven config, dedupe, and `html_escape` work unchanged.
 
 ### Gotchas
 

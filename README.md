@@ -2,7 +2,7 @@
 
 A Figma-style commenting layer for live web designs. Drop the script onto any preview URL; stakeholders click elements to leave pinned, threaded comments; everyone viewing the page sees the same comments in real time.
 
-Built per the spec in [`comment-widget-build-plan.md`](./comment-widget-build-plan.md). This repo currently delivers **Phase 1, Phase 2, and Phase 3**: pinned comments with threaded replies, resolve / reopen flow, per-project filtering, real-time sync, reload persistence, visible error feedback, email-OTP auth for writes, @-mentions with an in-widget team list and **outbound email notifications via Power Automate**, drag-to-reposition pins, and selective delete of your own comments. The remaining Phase 3 backlog (Slack webhook, archive view) is on the roadmap below.
+Built per the spec in [`comment-widget-build-plan.md`](./comment-widget-build-plan.md). This repo currently delivers **Phase 1, Phase 2, and Phase 3**: pinned comments with threaded replies, resolve / reopen flow, per-project filtering, real-time sync, reload persistence, visible error feedback, email-OTP auth for writes, @-mentions with an in-widget team list and **outbound email notifications via a Postgres trigger** (Brevo direct by default, generic webhook bridge optional), drag-to-reposition pins, and selective delete of your own comments. The remaining Phase 3 backlog (Slack webhook, archive view) is on the roadmap below.
 
 ---
 
@@ -13,7 +13,7 @@ Built per the spec in [`comment-widget-build-plan.md`](./comment-widget-build-pl
 | 1 — Minimum viable (click → comment → pin, real-time, reload persistence) | **Complete** |
 | 2 — Threaded replies, resolved status, toolbar filter, multi-project isolation | **Complete** |
 | 3 — Email-OTP auth, @-mentions, drag-to-reposition, selective delete | **Complete** |
-| 3.1 — Mention notifications via Power Automate webhook | **Complete** |
+| 3.1 — Mention notifications via Postgres trigger (Brevo direct or webhook bridge) | **Complete** |
 | 3.x — Slack webhook on new threads, archive view | Not started |
 
 Acceptance criteria walked through manually on the demo page — see [`demo/README.md`](./demo/README.md) for the §7.5 failure-mode checklist plus the Phase 3 walkthrough.
@@ -57,7 +57,7 @@ That's the whole integration. The widget reads its config from data attributes o
 `v0.3.0` adds outbound mention notifications via a Postgres trigger. Existing comments and mentions are unaffected; the trigger is opt-in and supports two delivery paths chosen by which rows are present in a private `widget_settings` table:
 
 1. **Brevo direct** (default, no IT approval needed) — free 300/day, sends from a verified personal Gmail/Outlook.
-2. **Generic webhook bridge** (Make.com → Outlook, Power Automate Premium, Zapier, etc.) — sends from your real work account once IT clears the bridge tool. Wins precedence over Brevo when both are set.
+2. **Generic webhook bridge** (Make.com → Outlook, or any HTTP-webhook automation service) — sends from your real work account once IT clears the bridge tool. Wins precedence over Brevo when both are set.
 
 Steps:
 
@@ -263,11 +263,13 @@ Shipping a new version:
    git tag v0.2.1
    git push origin v0.2.1
    ```
-6. The **Release** workflow runs, creates the GitHub Release, and the tag becomes immediately servable from jsDelivr at:
+6. The **Release** workflow runs, creates the GitHub Release, and the tag becomes servable from jsDelivr at:
    ```
    https://cdn.jsdelivr.net/gh/{user}/comment-widget@v0.2.1/dist/widget.iife.js
    ```
-7. **For releases that require Supabase configuration changes** (like v0.2.0's schema or v0.2.1's email-template edit): coordinate with each consuming project before they bump their `<script>` tag.
+   jsDelivr caches tag resolution for 5–15 minutes, so a brand-new tag URL may 404 for a brief window even though the tag exists on GitHub. If you need to verify a release immediately, hit `@<short-sha>/dist/widget.iife.js` (e.g. `@75ab80d/...`) — that resolves instantly. The tag URL catches up shortly after.
+7. **If `release.yml` did not auto-trigger**, GitHub Actions has been known to silently skip the tag-push event when a workflow file was modified between consecutive tag pushes. Recovery: **Actions → Release → Run workflow**, type the tag (`v0.3.0`), submit. The workflow's `workflow_dispatch` branch picks up the existing tag and creates the Release. Don't delete + re-push the tag to try to retrigger it.
+8. **For releases that require Supabase configuration changes** (like v0.2.0's schema or v0.2.1's email-template edit): coordinate with each consuming project before they bump their `<script>` tag.
 
 **Don't skip step 4.** If you tag before pulling, the tag will point at a commit that pre-dates the bot's `dist/` commit and jsDelivr will 404 on `widget.iife.js`. The Release workflow guards against this and fails loudly when it happens — delete the bad tag (`git push --delete origin v0.2.1 && git tag -d v0.2.1`), pull, and re-tag.
 
