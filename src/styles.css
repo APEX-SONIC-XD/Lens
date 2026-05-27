@@ -109,6 +109,20 @@
   opacity: 1;
 }
 
+/* Pin drag affordances. The grab cursor only shows for signed-in users
+ * (the parent wires `draggable` from auth state). */
+.cw-pin.cw-pin--draggable {
+  cursor: grab;
+}
+
+.cw-pin.cw-pin--dragging {
+  cursor: grabbing !important;
+  transform: rotate(-45deg) scale(1.18);
+  z-index: 2;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.32);
+  transition: none;
+}
+
 /* Thread popover */
 .cw-popover {
   position: absolute;
@@ -196,6 +210,27 @@
 .cw-comment-body {
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+/* Inline @-mention pill rendered inside .cw-comment-body. */
+.cw-mention {
+  display: inline-block;
+  background: rgba(47, 109, 246, 0.12);
+  color: var(--cw-accent-hover);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.cw-comment-delete {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cw-comment:hover .cw-comment-delete,
+.cw-comment-delete:focus-visible {
+  opacity: 1;
 }
 
 .cw-popover-empty {
@@ -365,6 +400,201 @@
   border-color: rgba(47, 109, 246, 0.3);
 }
 
+.cw-btn--danger {
+  color: #b42318;
+}
+
+.cw-btn--danger:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.cw-btn--danger.cw-btn--small {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
+.cw-btn--danger.cw-btn--small:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+/* Inline confirmation banner used by delete actions inside the popover. */
+.cw-confirm-banner {
+  margin: 0 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cw-confirm-banner--inline {
+  margin: 6px 0 0;
+}
+
+.cw-confirm-banner-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Toolbar avatar (signed-in pill) */
+.cw-toolbar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--cw-accent);
+  color: #fff;
+  border-color: var(--cw-accent);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.cw-toolbar-avatar:hover {
+  background: var(--cw-accent-hover);
+  border-color: var(--cw-accent-hover);
+}
+
+/* Mention dropdown that floats below the textarea. The wrapper is positioned
+ * by the parent (.cw-composer or .cw-popover-footer); the dropdown itself
+ * lives inside the wrapper and absolutely positions below the textarea. */
+.cw-mention-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.cw-mention-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: 6px;
+  box-shadow: var(--cw-shadow);
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 3;
+}
+
+.cw-mention-option {
+  padding: 6px 8px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.cw-mention-option:hover,
+.cw-mention-option.cw-mention-option--active {
+  background: var(--cw-bg-subtle);
+}
+
+.cw-mention-option-name {
+  font-weight: 600;
+  color: var(--cw-text);
+}
+
+.cw-mention-option-email {
+  font-size: 11px;
+  color: var(--cw-text-muted);
+}
+
+/* Team panel */
+.cw-team-panel {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+}
+
+.cw-team-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cw-team-panel-header .cw-modal-title {
+  flex: 1;
+}
+
+.cw-team-add {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+/* HTML inputs have an intrinsic min-width based on the `size` attribute
+ * (default 20ch). Inside a CSS grid, that prevents the 1fr columns from
+ * shrinking, which can push the Add button off the right edge of narrow
+ * panels. min-width: 0 lets the grid honor the column ratios. */
+.cw-team-add .cw-input {
+  min-width: 0;
+}
+
+.cw-team-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--cw-border);
+  border-radius: 6px;
+}
+
+.cw-team-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-team-row:last-child {
+  border-bottom: none;
+}
+
+.cw-team-row-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cw-team-row-meta > strong {
+  font-size: 13px;
+}
+
+.cw-team-row-meta > span {
+  font-size: 12px;
+  color: var(--cw-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cw-team-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--cw-text-muted);
+  font-size: 13px;
+}
+
+.cw-popover-signin-hint {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Toolbar */
 .cw-toolbar {
   position: fixed;
@@ -461,6 +691,26 @@
 .cw-input:focus {
   border-color: var(--cw-accent);
   box-shadow: 0 0 0 3px rgba(47, 109, 246, 0.15);
+}
+
+/* OTP code entry — large monospaced characters, generous letter spacing
+ * so the six digits don't run together. */
+.cw-input--code {
+  font-size: 20px;
+  letter-spacing: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Multi-action row in the OTP step: Back · Resend · Verify. */
+.cw-signin-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cw-signin-spacer {
+  flex: 1 1 auto;
 }
 
 /* Cursor change when comment mode is on. Applied to body by JS. */

@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue';
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
-import type { Comment, Identity, Thread, AnchorData } from '../types';
+import type { AnchorData, Comment, Identity, MentionDraft, Thread } from '../types';
 import { subscribeToProject, type ProjectSubscription } from './useSupabase';
 
 // Page URL minus hash. Two views of the same logical page differing only by
@@ -31,7 +31,7 @@ function describeError(e: unknown, fallback: string): WidgetError {
   const lowered = message.toLowerCase();
   let hint = fallback;
   if (lowered.includes('row-level security') || lowered.includes('rls')) {
-    hint = "Database refused the write — RLS policies don't allow it. Re-run supabase/schema.sql.";
+    hint = 'You need to be signed in to do that. Sign in and try again.';
   } else if (lowered.includes('invalid api key') || lowered.includes('jwt') || pg?.status === 401) {
     hint = 'Invalid Supabase anon key. Double-check the credentials.';
   } else if (lowered.includes('failed to fetch') || lowered.includes('networkerror')) {
@@ -103,9 +103,10 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     subscription = subscribeToProject(client, projectId, (event) => {
       if (event.table === 'threads') {
         handleThreadEvent(event.type, event.row);
-      } else {
+      } else if (event.table === 'comments') {
         handleCommentEvent(event.type, event.row);
       }
+      // mentionables events are handled in useMentionables' own channel.
     });
   }
 
@@ -160,11 +161,29 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     }
   }
 
+  // Best-effort: persist mentions for a newly inserted comment. Failure here
+  // is logged but doesn't fail the caller — the comment landed successfully,
+  // and mentions can be rebuilt by re-parsing the body if necessary.
+  async function persistMentions(commentId: string, mentions: readonly MentionDraft[]): Promise<void> {
+    if (mentions.length === 0) return;
+    const rows = mentions.map((m) => ({
+      comment_id: commentId,
+      mentioned_email: m.email,
+      mentioned_name: m.name,
+    }));
+    const { error } = await client.from('comment_mentions').insert(rows);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[comment-widget] failed to persist mentions:', error);
+    }
+  }
+
   // Throws WidgetError on failure. Returns the persisted Thread on success.
   async function createThread(
     anchor: AnchorData,
     body: string,
     identity: Identity,
+    mentions: readonly MentionDraft[] = [],
   ): Promise<Thread> {
     const { data: threadRow, error: threadError } = await client
       .from('threads')
@@ -193,7 +212,7 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     commentsByThread.value = { ...commentsByThread.value, [thread.id]: [] };
 
     try {
-      await replyToThread(thread.id, body, identity);
+      await replyToThread(thread.id, body, identity, mentions);
     } catch (e) {
       // Thread row landed but the initial comment didn't. Surface to caller so
       // they can decide whether to retry the reply or roll back. We leave the
@@ -207,6 +226,7 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     threadId: string,
     body: string,
     identity: Identity,
+    mentions: readonly MentionDraft[] = [],
   ): Promise<Comment> {
     const { data, error: insertError } = await client
       .from('comments')
@@ -232,6 +252,11 @@ export function useThreads(client: SupabaseClient, projectId: string) {
       ...commentsByThread.value,
       [threadId]: [...existing, comment],
     };
+
+    // Fire-and-forget; logged on failure. Awaited so the caller can serialize
+    // mention work behind comment work if it cares, but errors don't bubble.
+    await persistMentions(comment.id, mentions);
+
     return comment;
   }
 
@@ -267,6 +292,90 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     return updated;
   }
 
+  // Drag-to-reposition: rewrite the pin's selector + percentage coordinates.
+  async function updateThreadAnchor(threadId: string, anchor: AnchorData): Promise<Thread> {
+    const previous = threads.value.find((t) => t.id === threadId);
+    if (!previous) throw new WidgetError('Pin no longer exists.');
+
+    const optimistic: Thread = {
+      ...previous,
+      selector_path: anchor.selector,
+      anchor_x_pct: anchor.x_pct,
+      anchor_y_pct: anchor.y_pct,
+    };
+    threads.value = threads.value.map((t) => (t.id === threadId ? optimistic : t));
+
+    const { data, error: updateError } = await client
+      .from('threads')
+      .update({
+        selector_path: anchor.selector,
+        anchor_x_pct: anchor.x_pct,
+        anchor_y_pct: anchor.y_pct,
+      })
+      .eq('id', threadId)
+      .select()
+      .single();
+
+    if (updateError || !data) {
+      threads.value = threads.value.map((t) => (t.id === threadId ? previous : t));
+      // eslint-disable-next-line no-console
+      console.error('[comment-widget] failed to update thread anchor:', updateError);
+      throw describeError(updateError, 'Could not move the pin.');
+    }
+
+    const updated = data as Thread;
+    threads.value = threads.value.map((t) => (t.id === threadId ? updated : t));
+    return updated;
+  }
+
+  // Hard-delete a single comment. RLS only permits this when the signed-in
+  // user matches the author email.
+  async function deleteComment(threadId: string, commentId: string): Promise<void> {
+    const previousList = commentsByThread.value[threadId];
+    if (!previousList) throw new WidgetError('Comment no longer exists.');
+    const previousComment = previousList.find((c) => c.id === commentId);
+    if (!previousComment) throw new WidgetError('Comment no longer exists.');
+
+    commentsByThread.value = {
+      ...commentsByThread.value,
+      [threadId]: previousList.filter((c) => c.id !== commentId),
+    };
+
+    const { error: deleteError } = await client.from('comments').delete().eq('id', commentId);
+    if (deleteError) {
+      // Roll back.
+      commentsByThread.value = {
+        ...commentsByThread.value,
+        [threadId]: previousList,
+      };
+      // eslint-disable-next-line no-console
+      console.error('[comment-widget] failed to delete comment:', deleteError);
+      throw describeError(deleteError, 'Could not delete reply.');
+    }
+  }
+
+  // Hard-delete a thread. Schema cascades remove its comments + mentions.
+  // RLS only permits this when the signed-in user matches the thread creator.
+  async function deleteThread(threadId: string): Promise<void> {
+    const previousThreads = threads.value;
+    const previousComments = commentsByThread.value[threadId];
+    threads.value = previousThreads.filter((t) => t.id !== threadId);
+    const nextMap = { ...commentsByThread.value };
+    delete nextMap[threadId];
+    commentsByThread.value = nextMap;
+
+    const { error: deleteError } = await client.from('threads').delete().eq('id', threadId);
+    if (deleteError) {
+      threads.value = previousThreads;
+      if (previousComments) {
+        commentsByThread.value = { ...commentsByThread.value, [threadId]: previousComments };
+      }
+      // eslint-disable-next-line no-console
+      console.error('[comment-widget] failed to delete thread:', deleteError);
+      throw describeError(deleteError, 'Could not delete thread.');
+    }
+  }
+
   const openThreadCount = computed(
     () => threads.value.filter((t) => t.status === 'open').length,
   );
@@ -291,5 +400,8 @@ export function useThreads(client: SupabaseClient, projectId: string) {
     createThread,
     replyToThread,
     updateThreadStatus,
+    updateThreadAnchor,
+    deleteComment,
+    deleteThread,
   };
 }

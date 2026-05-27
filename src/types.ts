@@ -38,6 +38,30 @@ export interface Identity {
   email: string;
 }
 
+export interface Mentionable {
+  id: string;
+  project_id: string;
+  email: string;
+  name: string;
+  added_at: string;
+  added_by_email: string | null;
+}
+
+export interface CommentMention {
+  id: string;
+  comment_id: string;
+  mentioned_email: string;
+  mentioned_name: string;
+  created_at: string;
+}
+
+// Lightweight view of a mention captured by the composer / reply input.
+// Persisted into comment_mentions on submit.
+export interface MentionDraft {
+  email: string;
+  name: string;
+}
+
 export interface WidgetConfig {
   projectId: string;
   supabaseUrl: string;

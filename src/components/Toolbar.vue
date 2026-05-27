@@ -6,11 +6,16 @@ const props = defineProps<{
   openCount: number;
   totalCount: number;
   showOpenOnly: boolean;
+  signedIn: boolean;
+  userName: string | null;
 }>();
 
 defineEmits<{
   (e: 'toggle'): void;
   (e: 'toggle-filter'): void;
+  (e: 'open-team'): void;
+  (e: 'sign-in'): void;
+  (e: 'sign-out'): void;
 }>();
 
 const countLabel = computed(() => {
@@ -24,6 +29,11 @@ const countLabel = computed(() => {
 const filterLabel = computed(() =>
   props.showOpenOnly ? 'Showing open · click to show all' : 'Showing all · click to show open only',
 );
+
+const userInitial = computed(() => {
+  if (!props.userName) return '?';
+  return props.userName.trim().charAt(0).toUpperCase() || '?';
+});
 </script>
 
 <template>
@@ -39,7 +49,6 @@ const filterLabel = computed(() =>
       :aria-pressed="showOpenOnly"
       @click="$emit('toggle-filter')"
     >
-      <!-- Funnel icon: filled when filter is active -->
       <svg
         width="14"
         height="14"
@@ -53,6 +62,51 @@ const filterLabel = computed(() =>
       >
         <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
       </svg>
+    </button>
+
+    <button
+      v-if="signedIn"
+      type="button"
+      class="cw-btn cw-btn--ghost cw-btn--icon"
+      title="Manage team"
+      aria-label="Manage team"
+      @click="$emit('open-team')"
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    </button>
+
+    <button
+      v-if="!signedIn"
+      type="button"
+      class="cw-btn cw-btn--ghost cw-btn--small"
+      title="Sign in to comment"
+      @click="$emit('sign-in')"
+    >
+      Sign in
+    </button>
+    <button
+      v-else
+      type="button"
+      class="cw-btn cw-btn--ghost cw-btn--icon cw-toolbar-avatar"
+      :title="`Signed in as ${userName ?? ''} · click to sign out`"
+      @click="$emit('sign-out')"
+    >
+      <span aria-hidden="true">{{ userInitial }}</span>
     </button>
 
     <button

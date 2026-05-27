@@ -1,8 +1,3 @@
----
-description: Living overview of the Comment Widget repo — status, architecture, conventions, gotchas, and release flow. Update on every feature ship or material change.
-alwaysApply: true
----
-
 # Comment widget — project rule
 
 A Figma-style commenting overlay for live web designs. Drop one `<script>` tag onto any preview URL; stakeholders click elements to leave pinned, threaded comments; comments sync in real time. Source of truth for the spec: [`comment-widget-build-plan.md`](../../comment-widget-build-plan.md).
@@ -24,43 +19,48 @@ Keep this file under ~200 lines. If a section is getting long, factor it into it
 |---|---|---|
 | 1 — Click → comment → pin, realtime, reload persistence | **Complete** | v0.1.0 |
 | 2 — Threaded replies, resolve/reopen, toolbar filter, multi-project isolation | **Complete** | v0.1.0 |
-| 3 — Slack webhook on new threads, archive view, magic-link auth, RLS hardening | Not started | — |
+| 3 — Email-OTP auth (writes), @-mentions, drag-to-reposition, selective delete | **Complete** | v0.2.1 |
+| 3.1 — Mention notifications via Postgres trigger (Brevo direct or webhook bridge) | **Complete** | v0.3.0 |
+| 3.x — Slack webhook on new threads, archive view | Not started | — |
 
-Acceptance criteria for shipped phases are in §10 of the build plan and the §7.5 walkthrough in `demo/README.md`.
+Acceptance criteria for shipped phases are in §10 of the build plan and the walkthroughs in `demo/README.md`.
 
 ## Architecture map
 
 ```
 src/
-  index.ts                  entrypoint — reads data-* from script tag, mounts at document.body
-  types.ts                  Thread, Comment, AnchorData, ResolvedAnchor, Identity, WidgetConfig
-  styles.css                ALL styles scoped under #__comment-widget-root with cw- prefix
-  components/
-    CommentOverlay.vue      root component, owns: comment-mode, draft, active thread, deferred-identity actions, error state
-    CommentPin.vue          single pin marker (24px tilted droplet)
-    CommentThread.vue       popover w/ replies, resolve/reopen button, error banners
-    IdentityPrompt.vue      first-write name+email modal
-    Toolbar.vue             bottom-right floating button: count + filter funnel + comment toggle
-  composables/
-    useSupabase.ts          createSupabaseClient, subscribeToProject (postgres_changes on threads + comments)
-    useIdentity.ts          localStorage-backed identity (key: __comment_widget_identity)
-    useAnchoring.ts         Vue glue over AnchorScheduler — emits reactive position map
-    useThreads.ts           CRUD + realtime merge, throws WidgetError on failure with translated hints
-  lib/
-    selectorPath.ts         computeSelectorPath (id > [data-comment-anchor] > tag:nth-of-type), resolveSelectorPath w/ progressive shortening fallback
-    anchoring.ts            AnchorScheduler (shared MutationObserver + scroll/resize), AnchorWatcher (per-pin ResizeObserver)
+ index.ts entrypoint — reads data-* from script tag, mounts at document.body
+ types.ts Thread, Comment, AnchorData, ResolvedAnchor, Identity, Mentionable, CommentMention, MentionDraft, WidgetConfig
+ styles.css ALL styles scoped under #__comment-widget-root with cw- prefix
+ components/
+ CommentOverlay.vue root component, owns: comment-mode, draft, active thread, auth-deferred actions, error state
+ CommentPin.vue single pin marker (24px tilted droplet) + hold/drag-to-reposition (signed-in only)
+ CommentThread.vue popover w/ replies, resolve/reopen, delete affordances, mention rendering, error banners
+ SignInPrompt.vue two-step OTP modal (email + name → 6–10 digit code → verifyOtp), back + resend, error states
+ TeamPanel.vue mentionables management (signed-in only, any signed-in user can add/remove)
+ MentionInput.vue textarea with @-autocomplete dropdown; emits body + MentionDraft[]
+ Toolbar.vue bottom-right floating bar: count + filter funnel + team + sign-in / avatar + comment toggle
+ composables/
+ useSupabase.ts createSupabaseClient (persistSession + autoRefreshToken + detectSessionInUrl), subscribeToProject (threads + comments + mentionables filtered by project_id)
+ useAuth.ts session + user refs, derived Identity, requestEmailCode(email, name) + verifyEmailCode(email, code), signOut
+ useAnchoring.ts Vue glue over AnchorScheduler — emits reactive position map; detects anchor changes on existing threads (drag) and calls watcher.updateAnchor in place
+ useThreads.ts CRUD + realtime merge; createThread/replyToThread accept mentions and persist comment_mentions; updateThreadAnchor, deleteComment, deleteThread; throws WidgetError on failure
+ useMentionables.ts loads/realtime-subscribes mentionables (own channel — separate from threads/comments), computes pool = team ∪ historical authors minus current user, add/remove
+ lib/
+ selectorPath.ts computeSelectorPath (id > [data-comment-anchor] > tag:nth-of-type), resolveSelectorPath w/ progressive shortening fallback
+ anchoring.ts AnchorScheduler (shared MutationObserver + scroll/resize), AnchorWatcher (per-pin ResizeObserver) + updateAnchor() for drag-rewrite
 
 supabase/
-  schema.sql                threads + comments + indexes + RLS + realtime publication; idempotent
-  README.md                 setup + security hardening checklist
+ schema.sql threads + comments + mentionables + comment_mentions + indexes + auth-gated RLS + realtime publication + html_escape() + notify_comment_mention() dual-mode trigger (webhook bridge OR Brevo direct); idempotent
+ README.md setup, email-OTP template, team-list-as-UI note, Brevo + Make.com mention-notification walkthroughs (default + IT-blocked alternative), hardening checklist
 
 demo/
-  index.html                local test page w/ §7.5 failure-mode controls and project-switcher
-  README.md                 acceptance walkthrough
+ index.html local test page w/ §7.5 + Phase 3 controls (clear-session, project-switcher, etc.)
+ README.md acceptance walkthrough (Phases 1, 2, 3)
 
 .github/workflows/
-  build-dist.yml            on push to main → npm run build → commits dist/widget.iife.js + widget.es.js back to main
-  release.yml               on push of v* tag → verifies dist/ present → creates GitHub Release w/ assets
+ build-dist.yml on push to main → npm run build → commits dist/widget.iife.js + widget.es.js back to main
+ release.yml on push of v* tag → verifies dist/ present → creates GitHub Release w/ assets
 ```
 
 ## Conventions
@@ -70,9 +70,11 @@ demo/
 - **All styles scoped** under `#__comment-widget-root` with `cw-` prefixes. **Never** use bare element selectors (`button { }`) — they'd leak into the host page.
 - **Sentence case in UI strings.** Per build plan §13. Never Title Case.
 - **No narrative code comments** ("// increment the counter"). Comments only for non-obvious intent, trade-offs, or constraints the code itself can't convey.
-- **Errors throw, callers translate.** `useThreads` throws `WidgetError` with a translated `hint`; UI components show `hint` inline. Don't ever swallow Supabase errors silently — that's what cost us a session earlier.
-- **Optimistic updates with rollback.** `updateThreadStatus` flips local state first, awaits server, rolls back on error. Apply the same pattern to any new mutation.
-- **Anchoring uses percentages, not pixels.** A click at 50% × 50% of a button stays at 50% × 50% whether the button is 200 px wide or 600 px wide.
+- **Errors throw, callers translate.** `useThreads` and `useMentionables` throw `WidgetError` with a translated `hint`; UI components show `hint` inline. Don't ever swallow Supabase errors silently — that's what cost us a session earlier.
+- **Optimistic updates with rollback.** All mutations (status, anchor, delete) flip local state first, await server, roll back on error. Apply the same pattern to any new mutation.
+- **Anchoring uses percentages, not pixels.** A click at 50% × 50% of a button stays at 50% × 50% whether the button is 200 px wide or 600 px wide. Drag rewrites the same trio.
+- **Identity comes from `useAuth().identity`** — a computed view of the Supabase user's email + `user_metadata.name` (falling back to the email local-part). Don't store names/emails anywhere else.
+- **Auth is email OTP, not magic-link.** Sign-in is a two-step flow inside the same tab: `requestEmailCode` (sends a one-time code) → `verifyEmailCode` (verifyOtp with `type: 'email'`). The session persists in localStorage so users don't re-OTP on every reload. Don't reintroduce `emailRedirectTo` without good reason — it sends Supabase back to magic-link mode, which URL-rewriting gateways like Mimecast break.
 
 ## Gotchas paid for in time
 
@@ -80,16 +82,38 @@ Don't re-pay these:
 
 1. **Vite library mode does NOT replace `process.env.NODE_ENV`** by default. The IIFE bundle dies with `ReferenceError: process is not defined` the moment you load it in vanilla HTML. Fix is the `define` block in `vite.config.ts` — keep it there.
 2. **CSS must be injected at runtime**, not emitted as a separate file. We use `vite-plugin-css-injected-by-js` v3.5.x (v5+ requires Vite >8). Without this, consuming sites would need to load `widget.css` separately, breaking the "one script tag" embed pattern.
-3. **`@supabase/supabase-js` is not tree-shakable past `createClient`** — it bundles auth + storage + functions + postgrest + realtime as one unit. That's ~50 KB of our ~88 KB gzipped bundle. The path to <80 KB if it ever matters: swap for direct `@supabase/postgrest-js` + `@supabase/realtime-js`.
-4. **Realtime subscription filters can't OR across columns.** `comments` are subscribed without a server-side filter; the client filters by known `thread_id` membership in `useThreads.handleCommentEvent`.
-5. **Permissive RLS policies** (`using (true)`) ship in `supabase/schema.sql`. This is intentional for MVP behind stakeholder-only URLs, but **must be tightened before any non-preview deployment**. Hardening checklist is in `supabase/README.md`.
-6. **`document.currentScript` is null in ES modules.** The widget's auto-mount uses classic-script context; module consumers must call `window.CommentWidget.mount(config)` explicitly.
-7. **Release ritual sequencing:** push to main → wait for `build-dist` workflow → `git pull` → tag → push tag. Skipping the pull means tagging a commit that pre-dates the bot's `dist/` commit, and jsDelivr will 404. The `release.yml` workflow verifies and fails loudly if so.
-8. **Shell is Windows PowerShell, not bash.** Default shell on this machine is PowerShell 5.1, which means:
-   - `&&` between commands fails with `'&&' is not a valid statement separator`. Use `;` for sequential-with-continue, or split into separate shell calls.
-   - Bash heredoc (`<<'EOF'`) fails with `'<' operator is reserved for future use`. For multi-line `git commit` messages, use multiple `-m` flags (each becomes a paragraph) or `git commit -F path/to/msg.txt`.
-   - Unix file ops (`rm -rf`, `ls -la`, `cp`) work loosely via PS aliases but options like `-rf` break. Use `Remove-Item -Recurse -Force`, `Get-ChildItem`, `Copy-Item`.
-   - When in doubt, write each command as its own `Shell` call rather than chaining.
+3. **`@supabase/supabase-js` is not tree-shakable past `createClient`** — it bundles auth + storage + functions + postgrest + realtime as one unit. That's ~50 KB of our ~95 KB gzipped bundle. The path to <80 KB if it ever matters: swap for direct `@supabase/postgrest-js` + `@supabase/realtime-js` + `@supabase/auth-js`.
+4. **Realtime subscription filters can't OR across columns.** `comments` are subscribed without a server-side filter; the client filters by known `thread_id` membership in `useThreads.handleCommentEvent`. `mentionables` is filtered server-side by `project_id` on its own channel.
+5. **Supabase Magic Link email template must render `{{ .Token }}`, not `{{ .ConfirmationURL }}`.** When `signInWithOtp` is called without `emailRedirectTo` (our setup), Supabase reuses the Magic Link template but the OTP code is in `{{ .Token }}`. If the default template still wraps everything in `{{ .ConfirmationURL }}`, URL-rewriting gateways like Mimecast URL Protect mangle the link and sign-in silently fails — even though our `verifyOtp` path would have worked if the user had the raw code. Always edit the template to be code-only.
+6. **Don't reintroduce `emailRedirectTo` or `flowType: 'pkce'`.** Both belong to the magic-link/OAuth redirect flows we deliberately moved away from. The OTP path doesn't have a callback hash, so PKCE adds nothing useful and `emailRedirectTo` would flip Supabase back to magic-link mode (which fails behind Mimecast — see gotcha #5).
+6a. **OTP length is configurable in Supabase (6–10 digits)**, set under Authentication → Providers → Email → OTP length. `SignInPrompt.vue` accepts the full range via `MIN_OTP_LENGTH`/`MAX_OTP_LENGTH` constants. Don't re-hardcode 6 in the input's `maxlength`, the digit-slice, or the verify-button gate; if you do, projects on the 8-digit default will get a silently-truncated code that always fails `verifyOtp`. Auto-submit only fires on paste (`InputEvent.inputType === 'insertFromPaste'`) so the length check doesn't matter for paste-and-go.
+7. **`document.currentScript` is null in ES modules.** The widget's auto-mount uses classic-script context; module consumers must call `window.CommentWidget.mount(config)` explicitly.
+8. **Pin drag vs. click ambiguity.** A bare `click` handler on `.cw-pin` would fire after a drop and re-open the thread popover. `CommentPin.vue` tracks a `suppressClick` flag set when the pointer crosses the drag threshold or the hold timer fires; the next `click` swallows itself.
+9. **`document.elementFromPoint` (singular) cannot see past the widget at all** — don't try to fix it with pointer-events. The widget uses a "transparent root, interactive children" pattern: `#__comment-widget-root` has `pointer-events: none` and each interactive child (`.cw-pin`, `.cw-btn`, `.cw-toolbar`) re-enables `pointer-events: auto` by class. **The trap**: `pointer-events` is NOT an inherited CSS property — it's resolved per-element. Setting `pointer-events: none` on the root (even with `!important`) has zero effect on a descendant `.cw-pin { pointer-events: auto }` rule because they're independent computed values, not a cascade. Two failure receipts paid for this: first `rawTarget: span.cw-pin-label`, then `rawTarget: button.cw-pin.cw-pin--dragging.cw-pin--draggable` — both inner widget elements, despite the inline override on the root. **The actual fix is `document.elementsFromPoint(x, y)` (plural)**: returns every element at that point in z-order; pick the first one whose `closest(WIDGET_ROOT_SELECTOR)` is null. No style juggling, no cascade reasoning. `CommentPin.finishDrag` uses this — never reintroduce singular `elementFromPoint` + pointer-events toggle for this use case.
+9a. **Don't refuse `<body>` / `<html>` as drop targets.** The original drop guard in `CommentPin.finishDrag` rejected body/documentElement targets, which produced silent snap-backs whenever the cursor released on page padding/whitespace — no console output, no toast, no DB change, nothing for the user to diagnose. Body-relative anchors are perfectly usable (the bounding rect spans the document, percentages still position the pin near the drop point), so accept them. Only reject when `findCommentableTarget` returns null, meaning the drop hit the widget's own UI — and even then, `console.warn` with the raw target so the failure isn't silent.
+10. **`AnchorWatcher.thread` was once `readonly`.** Drag-to-reposition required swapping it at runtime via `updateAnchor`. If you reintroduce `readonly`, drag breaks silently — the position update lands in Supabase but the local watcher keeps the old element.
+11. **`comment_mentions` writes are best-effort and logged on failure.** A successful comment insert plus a failed mention insert leaves the comment in place without mention rows. This is intentional — don't change it to fail the whole reply on mention errors without thinking about the UX.
+12. **Permissive RLS is gone.** v0.2.0 hardened threads/comments INSERT to require `auth.uid()` and matching `author_email = auth.email()`. DELETE further requires row-creator match. If you write a new mutation, mirror the same shape in `schema.sql` and re-run the script — and remember to update existing consumer projects before they bump their script tag.
+13. **`useMentionables` opens its own realtime channel** (`comment-widget:${projectId}:mentionables`). It does *not* piggy-back on the main `comment-widget:${projectId}` topic because each Supabase channel name must be unique per client. Don't merge them without renaming.
+13a. **PostgrestError is not an Error instance.** Supabase returns plain objects like `{ message, details, hint, code }` for query failures. `instanceof Error` is false for these, and a naive `String(e)` collapses to `[object Object]` (silent bug). The fix is `useMentionables.extractErrorMessage` — copy that pattern for any new composable that surfaces Supabase errors to the UI. Special-case `42P01` (table missing) and `42501` (permission denied) so users get an actionable hint instead of raw Postgres lingo.
+13b. **Mention notifications use a dual-mode Postgres trigger + `pg_net`, not the widget.** `notify_comment_mention()` fires AFTER INSERT on `comment_mentions`, joins to the parent comment + thread for context, and dispatches via whichever path is configured in the private `widget_settings` key/value table:
+ - **Path 1 (webhook bridge):** if a row with key `mention_webhook_url` exists, POSTs raw JSON to that URL (Make.com / Power Automate Premium / Zapier shape).
+ - **Path 2 (Brevo direct):** else if a row with key `brevo_api_key` exists, formats the email body in SQL and POSTs straight to `https://api.brevo.com/v3/smtp/email` with the `api-key` header. Reads `brevo_sender_email` and `brevo_sender_name` from the same table.
+ - **Neither set:** silently no-ops.
+ Webhook path takes precedence so swapping back to a bridge after Brevo is one `insert ... on conflict` away. Self-mentions are skipped before any HTTP. The function is wrapped in `exception when others` so a bad URL/API key never blocks a comment insert — it logs a `warning` and returns. Don't move any of this into the client — exposing the API key or webhook URL in the bundle defeats the point.
+13b-0. **Hosted Supabase forbids `ALTER DATABASE postgres SET`.** Initial v0.3.0 used `current_setting('app.settings.*')` for the webhook URL and Brevo key, but the `postgres` role on hosted Supabase doesn't have permission to set database parameters (`ERROR: 42501: permission denied to set parameter`). The fix is the `widget_settings` table — RLS-locked (no policies, all privs revoked from `anon`/`authenticated`), only the security-definer trigger can read it. Don't reintroduce `current_setting`-based config for new settings; extend `widget_settings` with new keys instead.
+13b-0-i. **`pg_net` is NOT installed by default on older Supabase projects** even though their docs say it is. `schema.sql` now starts with `create extension if not exists pg_net;` for safety. If you skip this on a project that doesn't have pg_net, the trigger fires, `perform net.http_post(...)` throws, and the `exception when others` handler swallows it silently — the comment insert succeeds but **no email is ever sent and no row appears in `net._http_response`** because the relation itself doesn't exist. Smoking gun: `select * from net._http_response` returns `relation "net._http_response" does not exist`. Fix: run `create extension pg_net;` (the `postgres` role on Supabase has the right to do this) and re-test with a fresh mention.
+13b-0-ii. **`net._http_response` schema changed across pg_net versions.** Older pg_net (≤ 0.7) had a `url` column on the response table; pg_net 0.20+ does not — the URL lives on the request side which gets purged after the response lands. Don't `where url like ...` in diagnostic queries on modern pg_net; filter by `created` timestamp or `status_code` instead, or use `net.http_collect_response(request_id)` if you held onto the request id.
+13b-i. **Why Brevo direct is the default and not Make.com.** Make.com's Microsoft 365 connector triggers M365 admin-consent OAuth scopes that most corporate IT teams gate. Brevo signup is just a SaaS account + single-sender verification, no OAuth into any tenant. Cost is the same (free at our volume). The trade-off: Brevo emails are sent from a verified personal Gmail/Outlook, not the user's real work address. **Do not** verify a corporate-domain email as the Brevo sender — DMARC will quarantine outbound mail at the recipient's gateway because Brevo's servers can't satisfy SPF/DKIM alignment for `@yourcompany.com`. The walkthrough in `supabase/README.md` enforces this in the setup steps.
+13b-ii. **`html_escape()` is required for any user-typed field in the Brevo HTML body.** Email clients don't execute JS so XSS isn't the concern — broken layouts are. A comment like `<3 this design` would close the wrong tag. Use `public.html_escape(field)` for every interpolation into `v_html_body`; the plain-text alternate (`v_text_body`) doesn't need it.
+13c. **Dev auth bypass exists.** `useAuth` reads `localStorage.__cw_dev_bypass_auth` (JSON `{ email, name }`) and, when present, sets `signedIn=true` with a faked Identity. This is for unsticking yourself when the Supabase OTP rate limit hits (default: ~3-4 per hour per project). The bypass ALSO requires temporarily disabling RLS on all four tables in Supabase via `supabase/dev-bypass.sql`, since the faked identity has no real JWT to satisfy `auth.uid()`-gated policies. There's a `console.warn` on activation so you can't forget the client side is on. Revert both before any non-dev use.
+13c-i. **Re-running `schema.sql` re-enables RLS on all four tables.** Both `schema.sql` and `dev-bypass.sql` need to be re-run as a pair whenever you migrate the schema while staying in bypass mode. The symptom of forgetting: comments save normally (the client doesn't pre-check RLS), but `comment_mentions` writes silently drop, pin drag snaps back on release (UPDATE on `threads` denied → optimistic rollback), and deletes fail. The walkthrough in `supabase/README.md` → "Dev auth bypass" lays out the pairing; if a future agent finds themselves debugging "feature X stopped working after I ran schema.sql," check whether dev-bypass.sql got re-run first.
+14. **Release ritual sequencing:** push to main → wait for `build-dist` workflow → `git pull` → tag → push tag. Skipping the pull means tagging a commit that pre-dates the bot's `dist/` commit, and jsDelivr will 404. The `release.yml` workflow verifies and fails loudly if so.
+15. **Shell is Windows PowerShell, not bash.** Default shell on this machine is PowerShell 5.1, which means:
+ - `&&` between commands fails with `'&&' is not a valid statement separator`. Use `;` for sequential-with-continue, or split into separate shell calls.
+ - Bash heredoc (`<<'EOF'`) fails with `'<' operator is reserved for future use`. For multi-line `git commit` messages, use multiple `-m` flags (each becomes a paragraph) or `git commit -F path/to/msg.txt`.
+ - Unix file ops (`rm -rf`, `ls -la`, `cp`) work loosely via PS aliases but options like `-rf` break. Use `Remove-Item -Recurse -Force`, `Get-ChildItem`, `Copy-Item`.
+ - When in doubt, write each command as its own `Shell` call rather than chaining.
 
 ## Release flow
 
@@ -97,22 +121,22 @@ Don't re-pay these:
 2. `build-dist` workflow runs, commits `build: refresh dist/ [skip ci]` back to main.
 3. `git pull`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
 4. `release` workflow runs, creates GitHub Release with assets.
-5. Consuming sites bump the version in their `<script src="cdn.jsdelivr.net/gh/USER/comment-widget@vX.Y.Z/dist/widget.iife.js">` tag.
+5. **For releases that require Supabase config changes:** coordinate with each consuming project before the bump — run the new `schema.sql`, update the email template if it's an auth change, then update the embed `<script src="cdn.jsdelivr.net/gh/USER/comment-widget@vX.Y.Z/dist/widget.iife.js">`.
 
 **Always pin to exact tags on consumers**, never `@latest` — jsDelivr caches per-tag and `@latest` will silently break stakeholders.
 
-## Roadmap (Phase 3 candidates, prioritized)
+## Roadmap (Phase 3.x candidates, prioritized)
 
-- **Slack webhook on new threads** — per-project webhook URL configured in Supabase, edge function bridges from `postgres_changes`.
-- **Magic-link auth replacing localStorage identity** — drops the permissive RLS policies, restricts updates to row creator. The bigger lift.
+- **Slack webhook on new threads and mentions** — per-project webhook URL configured in Supabase, edge function bridges from `postgres_changes` on `threads` + `comment_mentions`.
 - **Archive view** — list of resolved threads from past N days; soft-delete vs hard-delete decision still open.
 - **Story-navigation auto-reload for Storybook embeds** — currently the widget mounts once per iframe and doesn't follow story changes; needs `popstate` + history monkey-patch to re-scope by URL.
 - **Bundle slim to <80 KB gzipped** — modular Supabase imports (see gotcha #3).
 - **Visible "approximate anchor" tooltip** — currently the dashed amber border is the only signal; a hover tooltip would help.
+- **Editing your own comment** — natural complement to delete; needs an in-place editor in `CommentThread`.
 
 ## When in doubt
 
 - **Spec questions:** `comment-widget-build-plan.md` is the source of truth. Sections marked **VERIFY** drift over time — re-check against current docs before implementing.
-- **Backend / RLS:** `supabase/README.md`.
+- **Backend / RLS / auth setup:** `supabase/README.md`.
 - **Acceptance walkthroughs:** `demo/README.md`.
 - **Embed patterns (jsDelivr / local / Storybook):** root `README.md`.

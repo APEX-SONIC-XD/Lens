@@ -22,8 +22,12 @@ export class AnchorWatcher {
   private resizeObserver: ResizeObserver | null = null;
   private current: ResolvedAnchor | null = null;
   private disposed = false;
+  // Stored as a mutable field (not readonly) so updateAnchor() can swap it
+  // when a pin is repositioned via drag.
+  private thread: Pick<Thread, 'selector_path' | 'anchor_x_pct' | 'anchor_y_pct'>;
 
-  constructor(private readonly thread: Pick<Thread, 'selector_path' | 'anchor_x_pct' | 'anchor_y_pct'>) {
+  constructor(thread: Pick<Thread, 'selector_path' | 'anchor_x_pct' | 'anchor_y_pct'>) {
+    this.thread = thread;
     this.resolve();
   }
 
@@ -33,6 +37,16 @@ export class AnchorWatcher {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  // Replace the watched thread's anchor data and re-resolve. Called when the
+  // user drags a pin onto a new element; the existing ResizeObserver on the
+  // old element is torn down and a fresh one attaches to the new target.
+  updateAnchor(next: Pick<Thread, 'selector_path' | 'anchor_x_pct' | 'anchor_y_pct'>): void {
+    if (this.disposed) return;
+    this.thread = next;
+    this.teardownElement();
+    this.resolve();
   }
 
   // Called by the central scheduler on scroll / resize / RAF.

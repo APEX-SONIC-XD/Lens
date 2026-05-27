@@ -23,6 +23,15 @@ location.reload();
 
 The yellow config banner at the top disappears once both are set.
 
+### Enabling sign-in locally
+
+The widget signs writers in with a six-digit code emailed by Supabase. Before testing sign-in from the dev server:
+
+1. Go to **Authentication → Email Templates → Magic Link** in the Supabase dashboard.
+2. Replace the default body with a code-only template that renders `{{ .Token }}` and omits `{{ .ConfirmationURL }}`. The snippet is in [`../supabase/README.md`](../supabase/README.md).
+
+You do not need to configure **Redirect URLs** — the OTP flow stays in the same tab.
+
 ## §7.5 acceptance-criteria walkthrough
 
 The page exposes buttons that let you exercise each of the seven failure modes from §7.5 of the build plan. Before declaring Phase 1 done, walk through all of these:
@@ -48,13 +57,27 @@ Once you have a working Supabase backend wired up:
 3. **Toolbar filter.** With a mix of open and resolved pins, the toolbar funnel button toggles between "N open" (open only) and "N of M" (all). Open pins always remain visible; resolved pins only show when the filter is off.
 4. **Multi-project isolation.** Click **Switch project (demo ↔ demo-alt)** in the controls. The page reloads with a different `project_id` and the project pill at the top updates. Comments from one project should not appear in the other. To restore: click the button again.
 
+## Phase 3 acceptance criteria
+
+1. **Sign-in is required to write.** With no local Supabase session (use the **Clear local session** button to wipe), entering comment mode and clicking the page should still open the composer, but submitting it opens the sign-in modal with the hint "Sign in to post this comment." Enter name + email, click **Send code**, paste the six-digit code from your email, and click **Verify**. The original comment should auto-submit and the pin should land. The same deferred-replay behaviour should hold for reply, resolve / reopen, drag, and delete.
+2. **Reading stays anonymous.** Open the demo in an incognito tab with no `localStorage` Supabase session. Existing pins and threads should be visible. Trying to reply prompts sign-in.
+3. **@-mention autocomplete.** Open the **Team** panel from the toolbar (visible only when signed in). Add two team members with names + emails. Open any comment and type `@` in the reply box — the autocomplete dropdown should list both team members plus anyone who has previously authored on this project. Selecting a candidate inserts an `@Name` token and visually pills it after submit.
+4. **Drag-to-reposition.** Press and hold any pin for ~200 ms (or click and drag past ~4 px). The pin should follow the cursor. Release over another element — the pin should snap to that element and persist after reload. Dropping outside any valid element (e.g. over the body background) snaps the pin back to its origin without saving.
+5. **Selective delete.**
+   - Posting a thread: only the thread creator sees the **Delete thread** icon in the popover header. Clicking it shows an inline confirm; confirming removes the entire conversation. No other signed-in user (and no anonymous viewer) should see that button.
+   - Posting a reply: hovering your own reply reveals a trash icon next to the metadata. Clicking it shows an inline "Delete this reply?" prompt; confirming removes only that reply.
+   - The thread creator's first comment does *not* get a per-comment delete — the only way to remove it is via **Delete thread**.
+
 ### Visible errors
 
-The widget now surfaces insert / load failures inline:
+The widget surfaces insert / update / delete failures inline:
 
 - Failed to create the initial comment → red banner in the composer with a hint about what went wrong (RLS, invalid key, network, etc.).
 - Failed to post a reply → red banner inside the popover footer.
 - Failed to change status → red banner under the popover header.
+- Failed delete → red banner under the popover header.
+- Failed drag → red toast in the top-left of the viewport (a drag isn't tied to any popover).
 - Failed initial load → red toast in the top-left of the viewport.
+- Failed OTP request or verify → red banner inside the sign-in modal.
 
 Console still logs the full underlying error for debugging.

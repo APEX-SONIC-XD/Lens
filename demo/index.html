@@ -154,7 +154,7 @@
           <button id="btn-swap-text">Swap hero title text</button>
           <button id="btn-toggle-narrow">Toggle narrow viewport</button>
           <button id="btn-load-lazy">Load lazy section</button>
-          <button id="btn-clear-identity">Clear local identity</button>
+          <button id="btn-clear-session">Clear local session</button>
           <button id="btn-switch-project">Switch project (demo ↔ demo-alt)</button>
         </div>
 
@@ -252,9 +252,16 @@
         holder.appendChild(lazy);
         lazyLoaded = true;
       });
-      document.getElementById('btn-clear-identity').addEventListener('click', () => {
-        window.localStorage.removeItem('__comment_widget_identity');
-        alert('Identity cleared. Reload to be re-prompted.');
+      document.getElementById('btn-clear-session').addEventListener('click', () => {
+        // Supabase persists the session under keys prefixed with sb-<project-ref>-.
+        // Wipe everything sb-* so the next page load is back to anonymous.
+        const toRemove = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && key.startsWith('sb-')) toRemove.push(key);
+        }
+        for (const key of toRemove) window.localStorage.removeItem(key);
+        alert('Local Supabase session cleared. Reload to confirm sign-in state resets.');
       });
       document.getElementById('btn-switch-project').addEventListener('click', () => {
         const next = PROJECT_ID === 'demo' ? 'demo-alt' : 'demo';

@@ -7,15 +7,41 @@ import { computeSelectorPath } from '../lib/selectorPath';
 // shared AnchorScheduler. Pass it the reactive list of threads; it produces
 // a reactive map of `thread.id → ResolvedAnchor | null`.
 
+interface WatcherEntry {
+  watcher: AnchorWatcher;
+  off: () => void;
+  // Cached fingerprint to detect anchor changes on an existing thread without
+  // diffing the whole row each tick.
+  anchorKey: string;
+}
+
+function anchorKey(thread: Thread): string {
+  return `${thread.selector_path}|${thread.anchor_x_pct}|${thread.anchor_y_pct}`;
+}
+
 export function useAnchoring(threadsRef: { value: readonly Thread[] }) {
   const positions = reactive(new Map<string, ResolvedAnchor | null>());
   const scheduler = new AnchorScheduler();
-  const watchers = new Map<string, { watcher: AnchorWatcher; off: () => void }>();
+  const watchers = new Map<string, WatcherEntry>();
   const started = ref(false);
 
   function ensureWatcher(thread: Thread): void {
     const existing = watchers.get(thread.id);
-    if (existing) return;
+    if (existing) {
+      // Same id, but selector or coordinates moved — e.g. via drag-to-reposition.
+      // Update the watcher in place rather than tearing it down so subscribers
+      // continue to see one stream.
+      const key = anchorKey(thread);
+      if (existing.anchorKey !== key) {
+        existing.watcher.updateAnchor({
+          selector_path: thread.selector_path,
+          anchor_x_pct: thread.anchor_x_pct,
+          anchor_y_pct: thread.anchor_y_pct,
+        });
+        existing.anchorKey = key;
+      }
+      return;
+    }
     const watcher = new AnchorWatcher({
       selector_path: thread.selector_path,
       anchor_x_pct: thread.anchor_x_pct,
@@ -25,7 +51,7 @@ export function useAnchoring(threadsRef: { value: readonly Thread[] }) {
       positions.set(thread.id, anchor);
     });
     scheduler.register(watcher);
-    watchers.set(thread.id, { watcher, off });
+    watchers.set(thread.id, { watcher, off, anchorKey: anchorKey(thread) });
   }
 
   function disposeWatcher(threadId: string): void {

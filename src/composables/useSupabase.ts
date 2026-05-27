@@ -3,7 +3,7 @@ import {
   type RealtimePostgresChangesPayload,
   type SupabaseClient,
 } from '@supabase/supabase-js';
-import type { Comment, Thread } from '../types';
+import type { Comment, Mentionable, Thread } from '../types';
 
 // Verified May 2026 against supabase.com/docs/guides/realtime/postgres-changes
 // and @supabase/realtime-js's RealtimeChannel.on overloads (v2.x):
@@ -11,18 +11,24 @@ import type { Comment, Thread } from '../types';
 
 export type ProjectChangeEvent =
   | { table: 'threads'; type: 'INSERT' | 'UPDATE' | 'DELETE'; row: Thread }
-  | { table: 'comments'; type: 'INSERT' | 'UPDATE' | 'DELETE'; row: Comment };
+  | { table: 'comments'; type: 'INSERT' | 'UPDATE' | 'DELETE'; row: Comment }
+  | { table: 'mentionables'; type: 'INSERT' | 'UPDATE' | 'DELETE'; row: Mentionable };
 
 export interface ProjectSubscription {
   unsubscribe(): void;
 }
 
 export function createSupabaseClient(url: string, anonKey: string): SupabaseClient {
+  // persistSession + autoRefreshToken keep signed-in users from having to
+  // re-OTP on every page reload. detectSessionInUrl stays on as a no-op for
+  // the OTP flow (no callback hash), but doesn't hurt and would re-enable
+  // magic-link callbacks if we ever fall back to that. Anonymous read
+  // traffic is unaffected — no session, no auth header.
   return createClient(url, anonKey, {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
     realtime: {
       params: {
@@ -70,6 +76,20 @@ export function subscribeToProject(
         const type = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE';
         const row = (type === 'DELETE' ? payload.old : payload.new) as Comment;
         onEvent({ table: 'comments', type, row });
+      },
+    )
+    .on<Mentionable>(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'mentionables',
+        filter: `project_id=eq.${projectId}`,
+      },
+      (payload: RealtimePostgresChangesPayload<Mentionable>) => {
+        const type = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE';
+        const row = (type === 'DELETE' ? payload.old : payload.new) as Mentionable;
+        onEvent({ table: 'mentionables', type, row });
       },
     )
     .subscribe((status, err) => {
