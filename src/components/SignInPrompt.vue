@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 defineProps<{
   // Optional contextual hint shown above the form. Used by the deferred-action
@@ -58,6 +58,28 @@ function startCooldown(): void {
 onBeforeUnmount(() => {
   if (cooldownTimer !== null) window.clearInterval(cooldownTimer);
 });
+
+// Persist the last-used email and name in localStorage so the form pre-fills
+// on the next sign-in. Wrapped in try/catch because localStorage can be
+// unavailable in some contexts (strict private-browsing, sandboxed iframes).
+const LS_EMAIL = 'cw_saved_email';
+const LS_NAME  = 'cw_saved_name';
+
+onMounted(() => {
+  try {
+    const savedEmail = localStorage.getItem(LS_EMAIL);
+    const savedName  = localStorage.getItem(LS_NAME);
+    if (savedEmail) email.value = savedEmail;
+    if (savedName)  name.value  = savedName;
+  } catch { /* storage unavailable — silently skip */ }
+});
+
+function saveCredentials(): void {
+  try {
+    localStorage.setItem(LS_EMAIL, email.value.trim());
+    localStorage.setItem(LS_NAME,  name.value.trim());
+  } catch { /* storage unavailable — silently skip */ }
+}
 
 const cooldownSeconds = computed(() => Math.ceil(cooldownRemainingMs.value / 1000));
 
@@ -129,9 +151,9 @@ async function submitVerify(): Promise<void> {
   verifyError.value = null;
   try {
     await emit('verify-code', { email: trimmedEmail, code: trimmedCode });
-    // Success: parent's watch(signedIn) closes the modal by clearing
-    // pendingAction. We leave local state alone so the closing animation
-    // shows the verified state if needed.
+    // Success: persist credentials so the form pre-fills next time, then let
+    // the parent's watch(signedIn) close the modal by clearing pendingAction.
+    saveCredentials();
   } catch (e) {
     verifyError.value = e instanceof Error ? e.message : 'Could not verify code.';
   } finally {
@@ -187,6 +209,7 @@ function onCodeInput(event: Event): void {
           v-model="name"
           class="cw-input"
           type="text"
+          name="name"
           autocomplete="name"
           placeholder="Jane Designer"
           :disabled="requesting"
@@ -200,6 +223,7 @@ function onCodeInput(event: Event): void {
           v-model="email"
           class="cw-input"
           type="email"
+          name="email"
           autocomplete="email"
           placeholder="jane@example.com"
           :disabled="requesting"

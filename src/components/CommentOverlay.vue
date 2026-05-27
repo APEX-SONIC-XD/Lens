@@ -214,13 +214,34 @@ function handleDocumentMousedown(event: MouseEvent): void {
   };
 }
 
+/**
+ * Block click and mouseup events from reaching host-page elements while comment
+ * mode is active. The mousedown handler above stops propagation of mousedown,
+ * but the browser still synthesises a separate click event after mouseup — which
+ * is what activates buttons, links, and other interactive elements. Intercepting
+ * click (and mouseup for frameworks that listen there) in the same capture phase
+ * prevents those actions from firing.
+ *
+ * Widget-internal clicks are allowed through because findCommentableTarget returns
+ * null for anything inside the widget root.
+ */
+function handleDocumentClickCapture(event: MouseEvent): void {
+  if (!commentMode.value) return;
+  const target = findCommentableTarget(event.target);
+  if (!target) return; // Inside widget UI — let it through.
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function installCaptureClick(): void {
   document.addEventListener('mousedown', handleDocumentMousedown, { capture: true });
+  document.addEventListener('mouseup', handleDocumentClickCapture, { capture: true });
+  document.addEventListener('click', handleDocumentClickCapture, { capture: true });
 }
 function removeCaptureClick(): void {
-  document.removeEventListener('mousedown', handleDocumentMousedown, {
-    capture: true,
-  } as EventListenerOptions);
+  document.removeEventListener('mousedown', handleDocumentMousedown, { capture: true } as EventListenerOptions);
+  document.removeEventListener('mouseup', handleDocumentClickCapture, { capture: true } as EventListenerOptions);
+  document.removeEventListener('click', handleDocumentClickCapture, { capture: true } as EventListenerOptions);
 }
 
 watch(commentMode, (active) => {
@@ -261,6 +282,7 @@ async function submitDraft(): Promise<void> {
 
 function cancelDraft(): void {
   draft.value = null;
+  commentMode.value = false;
 }
 
 async function handleReply(payload: { body: string; mentions: MentionDraft[] }): Promise<void> {
@@ -404,6 +426,19 @@ async function handleSignOut(): Promise<void> {
 }
 
 function handleKey(event: KeyboardEvent): void {
+  // "c" toggles comment mode — skip when the user is typing in a field or
+  // when any modifier key is held (avoids stealing Ctrl+C / Cmd+C / etc.).
+  if (
+    event.key === 'c' &&
+    !event.metaKey && !event.ctrlKey && !event.altKey
+  ) {
+    const t = event.target as HTMLElement;
+    if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA' && !t.isContentEditable) {
+      toggleCommentMode();
+      return;
+    }
+  }
+
   if (event.key !== 'Escape') return;
   if (pendingAction.value) {
     onSignInCancel();

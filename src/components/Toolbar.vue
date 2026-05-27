@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
   active: boolean;
@@ -33,6 +33,14 @@ const filterLabel = computed(() =>
 const userInitial = computed(() => {
   if (!props.userName) return '?';
   return props.userName.trim().charAt(0).toUpperCase() || '?';
+});
+
+const confirmingSignOut = ref(false);
+
+// Reset the confirmation if the user's auth state changes (e.g. signed out
+// elsewhere or session expires) so the toolbar doesn't get stuck.
+watch(() => props.signedIn, () => {
+  confirmingSignOut.value = false;
 });
 </script>
 
@@ -99,22 +107,44 @@ const userInitial = computed(() => {
     >
       Sign in
     </button>
-    <button
-      v-else
-      type="button"
-      class="cw-btn cw-btn--ghost cw-btn--icon cw-toolbar-avatar"
-      :title="`Signed in as ${userName ?? ''} · click to sign out`"
-      @click="$emit('sign-out')"
-    >
-      <span aria-hidden="true">{{ userInitial }}</span>
-    </button>
+    <template v-else>
+      <!-- Normal state: avatar button opens the confirmation -->
+      <button
+        v-if="!confirmingSignOut"
+        type="button"
+        class="cw-btn cw-btn--ghost cw-btn--icon cw-toolbar-avatar"
+        :title="`Signed in as ${userName ?? ''}`"
+        @click="confirmingSignOut = true"
+      >
+        <span aria-hidden="true">{{ userInitial }}</span>
+      </button>
+
+      <!-- Confirmation state: prompt + confirm/cancel -->
+      <template v-else>
+        <span class="cw-toolbar-label">Sign out?</span>
+        <button
+          type="button"
+          class="cw-btn cw-btn--ghost cw-btn--small"
+          @click="$emit('sign-out'); confirmingSignOut = false"
+        >
+          Sign out
+        </button>
+        <button
+          type="button"
+          class="cw-btn cw-btn--ghost cw-btn--small"
+          @click="confirmingSignOut = false"
+        >
+          Cancel
+        </button>
+      </template>
+    </template>
 
     <button
       type="button"
       class="cw-btn cw-toolbar-toggle"
       :class="{ 'cw-toolbar-toggle--on': active }"
       :aria-pressed="active"
-      :title="active ? 'Exit comment mode' : 'Enter comment mode'"
+      :title="active ? 'Exit comment mode (C)' : 'Enter comment mode (C)'"
       @click="$emit('toggle')"
     >
       <svg
