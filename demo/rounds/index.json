@@ -1,0 +1,20 @@
+{
+  "rounds": [
+    {
+      "id": "r1",
+      "label": "Round 1",
+      "path": "rounds/r1/"
+    },
+    {
+      "id": "r2",
+      "label": "Round 2",
+      "path": "rounds/r2/"
+    },
+    {
+      "id": "r3",
+      "label": "Round 3",
+      "path": "rounds/r3/"
+    }
+  ],
+  "latest": "r3"
+}

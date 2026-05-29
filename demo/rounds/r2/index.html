@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme · Round 2</title>
+    <style>
+      :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a1a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #fff; }
+      .fixture { background: #111827; color: #fff; font-size: 12px; padding: 8px 16px; display: flex; gap: 12px; align-items: center; }
+      .fixture a { color: #93c5fd; }
+      .split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1080px; margin: 0 auto; padding: 64px 24px; align-items: center; }
+      .split h1 { font-size: 34px; margin: 0 0 12px; }
+      .art { aspect-ratio: 4/3; border-radius: 12px; background: linear-gradient(135deg, #10b981, #2f6df6); }
+      .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1080px; margin: 0 auto 64px; padding: 0 24px; }
+      .feature { border: 1px solid #e3e4e8; border-radius: 10px; padding: 20px; }
+      .feature h3 { margin-top: 0; }
+      @media (max-width: 720px) { .split, .features { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="fixture">
+      <strong>Local rounds fixture</strong>
+      <span>Round 2 — restructured into split hero + features</span>
+      <a href="/demo/">back to demo</a>
+    </div>
+
+    <div class="split">
+      <div>
+        <h1 data-comment-anchor="r2-headline">A new layout entirely.</h1>
+        <p data-comment-anchor="r2-copy">Round 2 moved the hero left and added a feature grid. The DOM is totally different from round 1 — which is exactly why old pins can't just be re-flowed onto it.</p>
+      </div>
+      <div class="art" data-comment-anchor="r2-art" aria-hidden="true"></div>
+    </div>
+
+    <div class="features">
+      <div class="feature" data-comment-anchor="r2-f1"><h3>Fast</h3><p>Pin a comment here.</p></div>
+      <div class="feature" data-comment-anchor="r2-f2"><h3>Simple</h3><p>And here.</p></div>
+      <div class="feature" data-comment-anchor="r2-f3"><h3>Reliable</h3><p>And here.</p></div>
+    </div>
+
+    <script type="module" src="/demo/rounds/_mount.js"></script>
+  </body>
+</html>

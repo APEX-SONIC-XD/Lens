@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { Round } from '../composables/useRounds';
 
 const props = defineProps<{
   active: boolean;
@@ -8,14 +9,19 @@ const props = defineProps<{
   showOpenOnly: boolean;
   signedIn: boolean;
   userName: string | null;
+  roundsEnabled: boolean;
+  rounds: Round[];
+  currentRoundId: string | null;
+  isLatestRound: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'toggle'): void;
   (e: 'toggle-filter'): void;
   (e: 'open-team'): void;
   (e: 'sign-in'): void;
   (e: 'sign-out'): void;
+  (e: 'select-round', round: Round): void;
 }>();
 
 const countLabel = computed(() => {
@@ -42,11 +48,82 @@ const confirmingSignOut = ref(false);
 watch(() => props.signedIn, () => {
   confirmingSignOut.value = false;
 });
+
+const roundMenuOpen = ref(false);
+
+const currentRoundIndex = computed(() =>
+  props.rounds.findIndex((round) => round.id === props.currentRoundId),
+);
+
+const roundButtonLabel = computed(() => {
+  const index = currentRoundIndex.value;
+  if (index < 0) return 'Rounds';
+  return `Round ${index + 1} of ${props.rounds.length}`;
+});
+
+function chooseRound(round: Round): void {
+  roundMenuOpen.value = false;
+  if (round.id !== props.currentRoundId) emit('select-round', round);
+}
 </script>
 
 <template>
   <div class="cw-toolbar" role="toolbar" aria-label="Comment widget">
     <span class="cw-toolbar-label">{{ countLabel }}</span>
+
+    <div v-if="roundsEnabled" class="cw-round-switcher">
+      <div
+        v-if="roundMenuOpen"
+        class="cw-round-backdrop"
+        @click="roundMenuOpen = false"
+      />
+      <button
+        type="button"
+        class="cw-btn cw-btn--ghost cw-btn--small cw-round-trigger"
+        :class="{ 'cw-round-trigger--archived': !isLatestRound }"
+        :aria-expanded="roundMenuOpen"
+        aria-haspopup="listbox"
+        :title="isLatestRound ? 'Switch review round' : 'Viewing an archived round'"
+        @click="roundMenuOpen = !roundMenuOpen"
+      >
+        <span v-if="!isLatestRound" class="cw-round-dot" aria-hidden="true" />
+        <span>{{ roundButtonLabel }}</span>
+        <svg
+          class="cw-round-chevron"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <ul v-if="roundMenuOpen" class="cw-round-menu" role="listbox">
+        <li v-for="(round, i) in rounds" :key="round.id">
+          <button
+            type="button"
+            class="cw-round-option"
+            :class="{ 'cw-round-option--current': round.id === currentRoundId }"
+            role="option"
+            :aria-selected="round.id === currentRoundId"
+            @click="chooseRound(round)"
+          >
+            <span>{{ round.label || `Round ${i + 1}` }}</span>
+            <span
+              v-if="round.id === currentRoundId"
+              class="cw-round-check"
+              aria-hidden="true"
+              >&check;</span
+            >
+          </button>
+        </li>
+      </ul>
+    </div>
 
     <button
       v-if="totalCount > 0"

@@ -182,6 +182,23 @@
         <h2>Lazy-loaded section</h2>
         <p>Click "Load lazy section" above to inject content here. A pin previously anchored to an element inside this section should appear when the section appears.</p>
       </section>
+
+      <section>
+        <h2>Review rounds (local test)</h2>
+        <p>
+          A fixture that exercises the round switcher without deploying. Each round is a deliberately
+          different build under <code>/demo/rounds/rN/</code>, with a manifest at
+          <code>/demo/rounds/index.json</code> — exactly the layout the deploy templates produce.
+          Open round 1, drop a pin, then use the <strong>Round N of M</strong> control in the toolbar
+          to jump between rounds. Rounds 1 and 2 should show the amber "archived round" banner; round 3
+          (latest) should not.
+        </p>
+        <div class="controls">
+          <button onclick="location.href='/demo/rounds/r1/'">Open Round 1</button>
+          <button onclick="location.href='/demo/rounds/r2/'">Open Round 2</button>
+          <button onclick="location.href='/demo/rounds/r3/'">Open Round 3 (latest)</button>
+        </div>
+      </section>
     </main>
 
     <footer>

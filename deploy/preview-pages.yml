@@ -1,0 +1,97 @@
+name: Deploy preview round
+
+# Template workflow for a PREVIEW repo (e.g. the BMW T3 or EchoPark static
+# site that the comment widget is embedded on). It is NOT used by the widget
+# repo itself — copy it into the preview repo's .github/workflows/ folder
+# alongside deploy/build-rounds-manifest.mjs.
+#
+# What it does differently from a normal Pages deploy: instead of overwriting
+# the site root on every push, it archives each build under a permanent
+# /rounds/<id>/ URL. Old rounds are never clobbered, so the comment widget can
+# flip back to any previous round and load the exact build it was reviewed on.
+#
+# Trigger it manually from the Actions tab and pass the round id:
+#   - First review build      -> round = r1   -> /rounds/r1/
+#   - Next iteration           -> round = r2   -> /rounds/r2/
+#   - Fixing a typo in round 2 -> round = r2   -> redeploys r2 in place
+#
+# The site root (/) is rewritten to redirect to the newest round.
+
+on:
+  workflow_dispatch:
+    inputs:
+      round:
+        description: 'Round id (r1, r2, ...). Reuse an existing id to redeploy that round in place.'
+        required: true
+        default: r1
+
+permissions:
+  contents: write
+
+concurrency:
+  # Serialise deploys so two rounds can't race on the gh-pages branch.
+  group: preview-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ----------------------------------------------------------------------
+      # Build your static preview here. The ONLY requirement is that the final
+      # static files (index.html + assets) land in ./build-output.
+      #
+      # Examples — keep whichever matches your toolchain and delete the rest:
+      #
+      #   # Plain static site whose files live at the repo root:
+      #   run: |
+      #     mkdir -p build-output
+      #     rsync -a --exclude build-output --exclude .git --exclude deploy ./ build-output/
+      #
+      #   # Node build (Vite/webpack/etc.) that emits to dist/:
+      #   run: npm ci && npm run build && mv dist build-output
+      # ----------------------------------------------------------------------
+      - name: Build preview
+        run: |
+          mkdir -p build-output
+          rsync -a \
+            --exclude build-output \
+            --exclude .git \
+            --exclude deploy \
+            --exclude .github \
+            ./ build-output/
+
+      - name: Check out existing published site
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: published
+        continue-on-error: true
+
+      - name: Assemble rounds tree (archive + manifest + root redirect)
+        env:
+          ROUND_ID: ${{ github.event.inputs.round }}
+        run: >-
+          node deploy/build-rounds-manifest.mjs
+          --site published
+          --build build-output
+          --round "$ROUND_ID"
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./published
+          # The assemble step reconstructs the full tree (all prior rounds plus
+          # the new one) from the checked-out gh-pages branch, so we publish the
+          # whole directory rather than relying on keep_files.
+          force_orphan: false

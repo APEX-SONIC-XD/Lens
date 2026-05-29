@@ -44,6 +44,18 @@ The page exposes buttons that let you exercise each of the seven failure modes f
 6. **Inner content swapped → pin stays roughly correct.** Pin near the start of the hero title text, then click "Swap hero title text". Percentage anchoring should keep the pin in approximately the right place.
 7. **Same selector on different pages.** Not directly exercisable from a single page, but verify by serving two distinct pages with overlapping selectors and confirming `page_url` filters them.
 
+## Review rounds (local test)
+
+`demo/rounds/` is a fixture that exercises the round switcher with no deploy. It mirrors the production layout the deploy templates produce: three deliberately different builds at `/demo/rounds/r1|r2|r3/` plus a manifest at `/demo/rounds/index.json`. The widget's `useRounds` keys entirely off the URL + manifest, so the dev server reproduces real behaviour.
+
+1. Run `npm run dev` and open `http://localhost:5173/demo/`.
+2. In the **Review rounds (local test)** section, click **Open Round 1** (or go straight to `http://localhost:5173/demo/rounds/r1/`).
+3. The toolbar shows a **Round 1 of 3** control. Open it and jump between rounds — each navigation loads a visibly different build.
+4. Rounds 1 and 2 show the amber **"Viewing an archived round"** banner; round 3 (the manifest's `latest`) does not.
+5. To verify per-round comment isolation, point the demo at a real Supabase project (see above), then leave a pin on round 1 and switch to round 2 — round 1's pins should not appear, and switching back should restore them. (Each round is a distinct `page_url`.)
+
+To confirm the graceful fallback, open `http://localhost:5173/demo/` itself: it isn't under `/rounds/`, so the switcher and banner stay hidden and the widget behaves exactly as before.
+
 ## Two-tab realtime test
 
 Open the demo in two browser tabs at the same URL. Create a comment in tab A. Tab B should show the new pin within ~2 seconds with no manual refresh.

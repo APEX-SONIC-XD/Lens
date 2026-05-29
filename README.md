@@ -14,6 +14,7 @@ Built per the spec in [`comment-widget-build-plan.md`](./comment-widget-build-pl
 | 2 — Threaded replies, resolved status, toolbar filter, multi-project isolation | **Complete** |
 | 3 — Email-OTP auth, @-mentions, drag-to-reposition, selective delete | **Complete** |
 | 3.1 — Mention notifications via Postgres trigger (Brevo direct or webhook bridge) | **Complete** |
+| 3.2 — Review rounds via archived deploys (round switcher, per-round URLs) | **Complete** |
 | 3.x — Slack webhook on new threads, archive view | Not started |
 
 Acceptance criteria walked through manually on the demo page — see [`demo/README.md`](./demo/README.md) for the §7.5 failure-mode checklist plus the Phase 3 walkthrough.
@@ -26,7 +27,7 @@ In the `<head>` or end of `<body>` of any XD preview:
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/{your-github-user}/comment-widget@v0.3.0/dist/widget.iife.js"
+  src="https://cdn.jsdelivr.net/gh/{your-github-user}/comment-widget@v0.3.2/dist/widget.iife.js"
   data-project-id="bmw-t3"
   data-supabase-url="https://your-project.supabase.co"
   data-supabase-anon-key="eyJhbG..."
@@ -208,6 +209,50 @@ OTP codes (vs. clickable magic links) tolerate URL-rewriting email security gate
 - **Historical authors** — anyone who has previously authored a thread or comment on this project. These appear automatically once their content loads.
 
 Selecting a candidate inserts a plain `@Display Name` token into the comment body and tracks the mention's email in an out-of-band `mentions` array. On submit, mentions land in `comment_mentions` for the just-inserted comment. The rendered comment matches `@Name` tokens against the same pool and wraps them in `cw-mention` pills. Notifications on mention (Slack / email) are tracked separately and ship in 3.x.
+
+---
+
+## Review rounds (archived deploys)
+
+A "review round" is one frozen iteration of a preview build. Because designs often change substantially between rounds, comments can't simply be re-flowed onto a redesigned layout — so instead of overwriting the preview on each iteration, **each round is archived at its own permanent URL** and the widget switches between them by navigating.
+
+There is **no schema change** for this feature. Each round is a distinct `page_url`, so the existing `(project_id, page_url)` scoping isolates comments per round automatically; flipping back to an old round loads the exact build it was reviewed on.
+
+### How it works
+
+```
+https://org.github.io/bmw-t3/rounds/r1/   ← round 1, frozen forever
+https://org.github.io/bmw-t3/rounds/r2/   ← round 2, frozen forever
+https://org.github.io/bmw-t3/             ← redirects to the newest round
+https://org.github.io/bmw-t3/rounds/index.json  ← manifest the widget reads
+```
+
+- The widget infers the current round from the `/rounds/rN/` segment of the URL ([`src/composables/useRounds.ts`](./src/composables/useRounds.ts)) and fetches `rounds/index.json` to populate the toolbar round switcher.
+- Selecting another round navigates to that round's URL (preserving any sub-path, query, and hash), which reloads the widget against that build's DOM and that round's comments.
+- When the page isn't served under `/rounds/` (local dev, or a site not using this layout) or the manifest is missing, the switcher stays hidden and the widget behaves exactly as before.
+- While viewing any round that isn't the latest, a small "Viewing an archived round" banner appears.
+
+### Deploying rounds (in the preview repo)
+
+The archiving lives in each **preview repo's** deploy pipeline, not in this widget repo. Two copy-pasteable templates are provided under [`deploy/`](./deploy/):
+
+- [`deploy/preview-pages.yml`](./deploy/preview-pages.yml) — a `workflow_dispatch` GitHub Action. You pass a `round` id (`r1`, `r2`, …); it builds the static site, then publishes it under `rounds/<id>/` on the `gh-pages` branch. Reusing an id redeploys that round in place (for fixes); a new id starts a new round.
+- [`deploy/build-rounds-manifest.mjs`](./deploy/build-rounds-manifest.mjs) — a dependency-free Node script the workflow runs to copy the build into `rounds/<id>/`, regenerate `rounds/index.json`, and write the root `index.html` redirect to the newest round. It reconstructs the full tree from the existing `gh-pages` branch, so prior rounds are never clobbered.
+
+Customize the **Build preview** step in the workflow to match the preview's toolchain (static copy vs. a Node build) — the only contract is that the final static files land in `./build-output`.
+
+### Migrating existing comments
+
+If you already collected comments on a preview's **bare root URL** before adopting this layout, turning the root into a redirect orphans those threads (their `page_url` no longer loads). To re-home them onto round 1, run a one-time update in the Supabase SQL editor (adjust the project id and URLs to match):
+
+```sql
+update public.threads
+set page_url = 'https://org.github.io/bmw-t3/rounds/r1/'
+where project_id = 'bmw-t3'
+  and page_url = 'https://org.github.io/bmw-t3/';
+```
+
+Threads are scoped by `(project_id, page_url)` only, so repointing `page_url` moves the whole thread (and its comments, which key off `thread_id`) into round 1.
 
 ---
 

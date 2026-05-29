@@ -631,6 +631,119 @@
   border-color: var(--cw-accent-hover);
 }
 
+/* Round switcher */
+.cw-round-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cw-round-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--cw-border);
+  border-radius: 999px;
+}
+
+.cw-round-trigger--archived {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.cw-round-trigger--archived:hover {
+  background: #ffedd5;
+}
+
+.cw-round-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f97316;
+}
+
+.cw-round-chevron {
+  opacity: 0.55;
+}
+
+/* Transparent click-catcher so clicking anywhere closes the menu. */
+.cw-round-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+  z-index: 1;
+}
+
+.cw-round-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 168px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--cw-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: 10px;
+  box-shadow: var(--cw-shadow);
+}
+
+.cw-round-menu li {
+  margin: 0;
+}
+
+.cw-round-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cw-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cw-round-option:hover {
+  background: var(--cw-bg-subtle);
+}
+
+.cw-round-option--current {
+  color: var(--cw-accent);
+  font-weight: 600;
+}
+
+.cw-round-check {
+  color: var(--cw-accent);
+}
+
+/* Banner shown while viewing any round that isn't the latest. */
+.cw-round-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--cw-shadow);
+}
+
 /* Identity prompt (modal) */
 .cw-modal-backdrop {
   position: fixed;

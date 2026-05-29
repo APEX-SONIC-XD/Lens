@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../composables/useSupabase';
 import { useAuth } from '../composables/useAuth';
 import { useThreads, WidgetError } from '../composables/useThreads';
 import { useMentionables } from '../composables/useMentionables';
+import { useRounds } from '../composables/useRounds';
 import { captureAnchor, useAnchoring } from '../composables/useAnchoring';
 import { findCommentableTarget } from '../lib/selectorPath';
 import Toolbar from './Toolbar.vue';
@@ -48,6 +49,15 @@ const mentionables = useMentionables({
 });
 
 const { positions } = useAnchoring(threads);
+
+const {
+  enabled: roundsEnabled,
+  rounds: roundList,
+  currentRoundId,
+  isLatest: isLatestRound,
+  load: loadRounds,
+  switchTo: switchRound,
+} = useRounds();
 
 const commentMode = ref(false);
 const activeThreadId = ref<string | null>(null);
@@ -471,6 +481,7 @@ const composerStyle = computed(() => {
 onMounted(async () => {
   installCaptureClick();
   document.addEventListener('keydown', handleKey);
+  void loadRounds();
   await load();
   startRealtime();
 });
@@ -493,6 +504,14 @@ void user;
     <div v-if="loadError" class="cw-toast cw-toast--error" role="alert">
       <strong>Something went wrong.</strong>
       <span>{{ loadError }}</span>
+    </div>
+
+    <div
+      v-if="roundsEnabled && !isLatestRound"
+      class="cw-round-banner"
+      role="status"
+    >
+      Viewing an archived round
     </div>
 
     <CommentPin
@@ -595,11 +614,16 @@ void user;
       :show-open-only="showOpenOnly"
       :signed-in="signedIn"
       :user-name="identity?.name ?? null"
+      :rounds-enabled="roundsEnabled"
+      :rounds="roundList"
+      :current-round-id="currentRoundId"
+      :is-latest-round="isLatestRound"
       @toggle="toggleCommentMode"
       @toggle-filter="toggleFilter"
       @open-team="teamPanelOpen = true"
       @sign-in="pendingAction = { kind: 'sign-in-only' }"
       @sign-out="handleSignOut"
+      @select-round="switchRound"
     />
   </div>
 </template>
